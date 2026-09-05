@@ -8,11 +8,20 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from high_performance_model.indicators.series import (
+    average_true_range,
     bollinger_bands,
+    expected_shortfall,
     exponential_moving_average,
     macd,
+    max_drawdown,
+    momentum,
+    rate_of_change,
     relative_strength_index,
     simple_moving_average,
+    sortino_ratio,
+    stochastic_oscillator,
+    value_at_risk,
+    volume_weighted_average_price,
 )
 from high_performance_model.protocol.models import (
     CallToolResult,
@@ -24,6 +33,7 @@ from high_performance_model.protocol.models import (
 from high_performance_model.protocol.server import MCPServer
 from high_performance_model.telemetry.buffer import MarketDataBuffer
 from high_performance_model.telemetry.generator import SyntheticMarketFeed
+from high_performance_model.types import Side
 
 
 def create_fintech_mcp_server(
@@ -117,7 +127,7 @@ def create_fintech_mcp_server(
     # --- Tool 3: calculate_technical_indicators ---
     @server.tool(
         name="calculate_technical_indicators",
-        description="Compute vectorized technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands) on price series.",
+        description="Compute vectorized technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, Momentum, ROC, Stochastic) on price series.",
         input_schema={
             "type": "object",
             "properties": {
@@ -125,7 +135,7 @@ def create_fintech_mcp_server(
                 "indicators": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of indicators to compute: 'sma', 'ema', 'rsi', 'macd', 'bollinger'",
+                    "description": "List of indicators: 'sma', 'ema', 'rsi', 'macd', 'bollinger', 'atr', 'vwap', 'momentum', 'roc', 'stochastic'",
                 },
             },
             "required": ["symbol"],
@@ -136,10 +146,12 @@ def create_fintech_mcp_server(
     ) -> CallToolResult:
         sym = symbol.upper()
         prices = buffer.get_price_series(sym, limit=200)
+        volumes = buffer.get_volume_series(sym, limit=200)
         if len(prices) < 20:
             for t in feed.generate_history(sym, 50):
                 buffer.push_tick(t)
             prices = buffer.get_price_series(sym, limit=200)
+            volumes = buffer.get_volume_series(sym, limit=200)
 
         requested = set(i.lower() for i in (indicators or ["sma", "ema", "rsi", "macd", "bollinger"]))
         out: Dict[str, Any] = {"symbol": sym, "last_price": float(prices[-1]) if len(prices) else None}
@@ -175,6 +187,37 @@ def create_fintech_mcp_server(
                 "bandwidth": float(round(bb["bandwidth"][-1], 4)),
             }
 
+        if "atr" in requested:
+            highs = prices * 1.01
+            lows = prices * 0.99
+            atr_arr = average_true_range(highs, lows, prices, period=14)
+            valid = atr_arr[~np.isnan(atr_arr)]
+            out["atr_14"] = float(round(valid[-1], 4)) if len(valid) else None
+
+        if "vwap" in requested:
+            out["vwap"] = volume_weighted_average_price(prices, volumes)
+
+        if "momentum" in requested:
+            mom = momentum(prices, period=10)
+            valid = mom[~np.isnan(mom)]
+            out["momentum_10"] = float(round(valid[-1], 4)) if len(valid) else None
+
+        if "roc" in requested:
+            roc_arr = rate_of_change(prices, period=10)
+            valid = roc_arr[~np.isnan(roc_arr)]
+            out["roc_10"] = float(round(valid[-1], 4)) if len(valid) else None
+
+        if "stochastic" in requested:
+            highs = prices * 1.01
+            lows = prices * 0.99
+            k, d = stochastic_oscillator(highs, lows, prices, 14, 3, 3)
+            valid_k = k[~np.isnan(k)]
+            valid_d = d[~np.isnan(d)]
+            out["stochastic"] = {
+                "percent_k": float(round(valid_k[-1], 2)) if len(valid_k) else None,
+                "percent_d": float(round(valid_d[-1], 2)) if len(valid_d) else None,
+            }
+
         return CallToolResult(
             content=[TextContent(text=json.dumps(out, indent=2))]
         )
@@ -182,7 +225,7 @@ def create_fintech_mcp_server(
     # --- Tool 4: compute_risk_metrics ---
     @server.tool(
         name="compute_risk_metrics",
-        description="Compute realized volatility, Sharpe ratio estimate, and rolling drawdown for a symbol.",
+        description="Compute realized volatility, Sharpe ratio, Sortino ratio, max drawdown, and VaR/CVaR for a symbol.",
         input_schema={
             "type": "object",
             "properties": {
@@ -201,23 +244,68 @@ def create_fintech_mcp_server(
 
         vol = buffer.compute_realized_volatility(sym)
         returns = np.diff(np.log(prices))
-        mean_ret = float(np.mean(returns)) if len(returns) else 0.0
-        std_ret = float(np.std(returns)) if len(returns) and np.std(returns) > 0 else 1e-6
-        sharpe = round((mean_ret / std_ret) * np.sqrt(252.0 * 24.0 * 60.0), 2)
-
-        running_max = np.maximum.accumulate(prices)
-        drawdowns = (prices - running_max) / running_max
-        max_drawdown = float(round(np.min(drawdowns), 4)) if len(drawdowns) else 0.0
+        sharpe = sharpe_ratio(returns, annualize=True)
+        sortino = sortino_ratio(returns, annualize=True)
+        mdd, _ = max_drawdown(prices)
+        var_95 = value_at_risk(returns, confidence_level=0.95, method="historical")
+        cvar_95 = expected_shortfall(returns, confidence_level=0.95)
 
         payload = {
             "symbol": sym,
             "realized_volatility_annualized": vol,
             "sharpe_ratio_estimate": sharpe,
-            "max_drawdown": max_drawdown,
+            "sortino_ratio_estimate": sortino,
+            "max_drawdown": mdd,
+            "value_at_risk_95": var_95,
+            "expected_shortfall_95": cvar_95,
             "sample_size_ticks": len(prices),
         }
         return CallToolResult(
             content=[TextContent(text=json.dumps(payload, indent=2))]
+        )
+
+    # --- Tool 5: get_volume_profile ---
+    @server.tool(
+        name="get_volume_profile",
+        description="Fetch binned volume profile and Point of Control (POC) price level for a symbol.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "bins": {"type": "integer", "description": "Number of price bins", "default": 10},
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def get_volume_profile(symbol: str, bins: int = 10) -> CallToolResult:
+        sym = symbol.upper()
+        profile = buffer.compute_volume_profile(sym, bins=max(2, min(bins, 50)))
+        return CallToolResult(
+            content=[TextContent(text=json.dumps({"symbol": sym, **profile}, indent=2))]
+        )
+
+    # --- Tool 6: estimate_market_impact ---
+    @server.tool(
+        name="estimate_market_impact",
+        description="Estimate execution slippage and price impact against the Level-2 order book.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "size": {"type": "number", "description": "Order size to execute"},
+                "side": {"type": "string", "description": "Order side ('buy' or 'sell')", "default": "buy"},
+            },
+            "required": ["symbol", "size"],
+        },
+    )
+    async def estimate_market_impact(
+        symbol: str, size: float, side: str = "buy"
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        exec_side = Side.SELL if side.lower() == "sell" else Side.BUY
+        impact = buffer.estimate_market_impact(sym, size=size, side=exec_side)
+        return CallToolResult(
+            content=[TextContent(text=json.dumps(impact, indent=2))]
         )
 
     # --- Resources ---
@@ -256,6 +344,10 @@ def create_fintech_mcp_server(
                 {"name": "macd", "full_name": "Moving Average Convergence Divergence", "fast": 12, "slow": 26, "signal": 9},
                 {"name": "bollinger", "full_name": "Bollinger Bands", "period": 20, "std_dev": 2.0},
                 {"name": "atr", "full_name": "Average True Range", "default_period": 14},
+                {"name": "vwap", "full_name": "Volume-Weighted Average Price"},
+                {"name": "momentum", "full_name": "Price Momentum", "default_period": 10},
+                {"name": "roc", "full_name": "Rate of Change", "default_period": 10},
+                {"name": "stochastic", "full_name": "Stochastic Oscillator", "k_period": 14, "d_period": 3},
             ]
         }
         return ReadResourceResult(

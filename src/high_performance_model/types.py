@@ -709,6 +709,7 @@ class BenchmarkRunResult(BaseModel):
     latency_p95_us: float = Field(..., ge=0.0)
     latency_p99_us: float = Field(..., ge=0.0)
     buffer_utilization_pct: float = Field(..., ge=0.0, le=100.0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert benchmark metrics to dictionary."""
@@ -720,4 +721,5 @@ class BenchmarkRunResult(BaseModel):
             "latency_p95_us": round(self.latency_p95_us, 2),
             "latency_p99_us": round(self.latency_p99_us, 2),
             "buffer_utilization_pct": round(self.buffer_utilization_pct, 2),
+            "metadata": self.metadata,
         }

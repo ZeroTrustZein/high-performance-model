@@ -2,7 +2,12 @@
 
 from high_performance_model.protocol.server import MCPServer
 from high_performance_model.server.app import create_fintech_mcp_server
-from high_performance_model.telemetry.buffer import MarketDataBuffer
+from high_performance_model.telemetry.benchmark import run_telemetry_benchmark
+from high_performance_model.telemetry.buffer import (
+    BarAggregator,
+    MarketDataBuffer,
+    aggregate_bars_from_ticks,
+)
 from high_performance_model.types import (
     AssetClass,
     Bar,
@@ -34,6 +39,7 @@ __version__ = "0.1.0"
 __all__ = [
     "AssetClass",
     "Bar",
+    "BarAggregator",
     "BarTimeframe",
     "BenchmarkRunResult",
     "IndicatorConfig",
@@ -54,9 +60,11 @@ __all__ = [
     "TechnicalIndicatorResult",
     "TimeInForce",
     "TradeExecution",
+    "aggregate_bars_from_ticks",
     "compute_microprice",
     "compute_spread_bps",
     "create_fintech_mcp_server",
+    "run_telemetry_benchmark",
     "timeframe_to_seconds",
     "validate_symbol",
 ]

@@ -1,21 +1,41 @@
-"""Vectorized financial technical indicator computations."""
+"""Vectorized financial technical indicator computations and risk metrics."""
 
 from high_performance_model.indicators.series import (
     average_true_range,
     bollinger_bands,
     exponential_moving_average,
+    expected_shortfall,
     macd,
+    max_drawdown,
+    momentum,
+    rate_of_change,
+    realized_volatility,
     relative_strength_index,
+    rolling_z_score,
+    sharpe_ratio,
     simple_moving_average,
+    sortino_ratio,
+    stochastic_oscillator,
+    value_at_risk,
     volume_weighted_average_price,
 )
 
 __all__ = [
     "average_true_range",
     "bollinger_bands",
+    "expected_shortfall",
     "exponential_moving_average",
     "macd",
+    "max_drawdown",
+    "momentum",
+    "rate_of_change",
+    "realized_volatility",
     "relative_strength_index",
+    "rolling_z_score",
+    "sharpe_ratio",
     "simple_moving_average",
+    "sortino_ratio",
+    "stochastic_oscillator",
+    "value_at_risk",
     "volume_weighted_average_price",
 ]
