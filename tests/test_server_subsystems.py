@@ -77,7 +77,9 @@ class TestServerSubsystemToolsAndResources:
             assert cancel_data["status"] == "cancelled"
 
             # 4. Query portfolio state
-            port_req = JsonRpcRequest(id=4, method="tools/call", params={"name": "get_portfolio_state"})
+            port_req = JsonRpcRequest(
+                id=4, method="tools/call", params={"name": "get_portfolio_state"}
+            )
             port_resp = await server.handle_request(port_req)
             port_data = json.loads(port_resp.result["content"][0]["text"])
             assert "cash_balance" in port_data
@@ -109,13 +111,17 @@ class TestServerSubsystemToolsAndResources:
             assert rule_data["alert_type"] == "price_above"
 
             # List alerts
-            list_req = JsonRpcRequest(id=11, method="tools/call", params={"name": "list_market_alerts"})
+            list_req = JsonRpcRequest(
+                id=11, method="tools/call", params={"name": "list_market_alerts"}
+            )
             list_resp = await server.handle_request(list_req)
             alerts_data = json.loads(list_resp.result["content"][0]["text"])
             assert len(alerts_data["active_rules"]) >= 1
 
             # Read resource alerts://active
-            res_req = JsonRpcRequest(id=12, method="resources/read", params={"uri": "alerts://active"})
+            res_req = JsonRpcRequest(
+                id=12, method="resources/read", params={"uri": "alerts://active"}
+            )
             res_resp = await server.handle_request(res_req)
             content = json.loads(res_resp.result["contents"][0]["text"])
             assert "active_rules" in content
@@ -130,7 +136,10 @@ class TestServerSubsystemToolsAndResources:
             export_req = JsonRpcRequest(
                 id=20,
                 method="tools/call",
-                params={"name": "export_buffer_snapshot", "arguments": {"file_path": snapshot_path}},
+                params={
+                    "name": "export_buffer_snapshot",
+                    "arguments": {"file_path": snapshot_path},
+                },
             )
             export_resp = await server.handle_request(export_req)
             assert export_resp.id == 20
@@ -141,7 +150,10 @@ class TestServerSubsystemToolsAndResources:
             import_req = JsonRpcRequest(
                 id=21,
                 method="tools/call",
-                params={"name": "import_buffer_snapshot", "arguments": {"file_path": snapshot_path}},
+                params={
+                    "name": "import_buffer_snapshot",
+                    "arguments": {"file_path": snapshot_path},
+                },
             )
             import_resp = await server.handle_request(import_req)
             import_data = json.loads(import_resp.result["content"][0]["text"])
@@ -160,14 +172,18 @@ class TestServerSubsystemToolsAndResources:
 
             # Read execution://history
             exec_res = await server.handle_request(
-                JsonRpcRequest(id=31, method="resources/read", params={"uri": "execution://history"})
+                JsonRpcRequest(
+                    id=31, method="resources/read", params={"uri": "execution://history"}
+                )
             )
             exec_content = json.loads(exec_res.result["contents"][0]["text"])
             assert "trades" in exec_content
 
             # Read market://telemetry/snapshot
             market_res = await server.handle_request(
-                JsonRpcRequest(id=32, method="resources/read", params={"uri": "market://telemetry/snapshot"})
+                JsonRpcRequest(
+                    id=32, method="resources/read", params={"uri": "market://telemetry/snapshot"}
+                )
             )
             market_content = json.loads(market_res.result["contents"][0]["text"])
             assert "AAPL" in market_content
@@ -225,7 +241,10 @@ class TestServerSubsystemToolsAndResources:
             depth_req = JsonRpcRequest(
                 id=41,
                 method="tools/call",
-                params={"name": "get_order_book_depth", "arguments": {"symbol": "NVDA", "depth": 8}},
+                params={
+                    "name": "get_order_book_depth",
+                    "arguments": {"symbol": "NVDA", "depth": 8},
+                },
             )
             depth_resp = await server.handle_request(depth_req)
             assert depth_resp.id == 41

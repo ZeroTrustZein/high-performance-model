@@ -19,17 +19,21 @@ from high_performance_model.types import (
 )
 
 
-def save_ticks_to_jsonl(ticks: List[MarketTick], file_path: Union[str, Path]) -> int:
-    """Serialize a list of MarketTicks to a newline-delimited JSON (JSONL) file."""
+def _save_models_to_jsonl(models: List[Any], file_path: Union[str, Path]) -> int:
+    """Helper to serialize a sequence of Pydantic domain models to a JSONL file."""
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with path.open("w", encoding="utf-8") as f:
-        for tick in ticks:
-            line = json.dumps(tick.to_dict())
-            f.write(line + "\n")
+        for item in models:
+            f.write(json.dumps(item.to_dict()) + "\n")
             count += 1
     return count
+
+
+def save_ticks_to_jsonl(ticks: List[MarketTick], file_path: Union[str, Path]) -> int:
+    """Serialize a list of MarketTicks to a newline-delimited JSON (JSONL) file."""
+    return _save_models_to_jsonl(ticks, file_path)
 
 
 def load_ticks_from_jsonl(
@@ -64,14 +68,16 @@ def save_ticks_to_csv(ticks: List[MarketTick], file_path: Union[str, Path]) -> i
         writer = csv.writer(f)
         writer.writerow(["symbol", "price", "size", "side", "sequence", "timestamp"])
         for tick in ticks:
-            writer.writerow([
-                tick.symbol,
-                tick.price,
-                tick.size,
-                tick.side.value,
-                tick.sequence or "",
-                tick.timestamp.isoformat(),
-            ])
+            writer.writerow(
+                [
+                    tick.symbol,
+                    tick.price,
+                    tick.size,
+                    tick.side.value,
+                    tick.sequence or "",
+                    tick.timestamp.isoformat(),
+                ]
+            )
             count += 1
     return count
 
@@ -88,7 +94,11 @@ def load_ticks_from_csv(
     with path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            ts = datetime.fromisoformat(row["timestamp"]) if row.get("timestamp") else datetime.now(timezone.utc)
+            ts = (
+                datetime.fromisoformat(row["timestamp"])
+                if row.get("timestamp")
+                else datetime.now(timezone.utc)
+            )
             seq = int(row["sequence"]) if row.get("sequence") else 0
             tick = MarketTick(
                 symbol=row["symbol"],
@@ -106,19 +116,10 @@ def load_ticks_from_csv(
 
 def save_bars_to_jsonl(bars: List[Bar], file_path: Union[str, Path]) -> int:
     """Serialize candle Bars to a JSONL file."""
-    path = Path(file_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    count = 0
-    with path.open("w", encoding="utf-8") as f:
-        for bar in bars:
-            f.write(json.dumps(bar.to_dict()) + "\n")
-            count += 1
-    return count
+    return _save_models_to_jsonl(bars, file_path)
 
 
-def load_bars_from_jsonl(
-    file_path: Union[str, Path], limit: Optional[int] = None
-) -> List[Bar]:
+def load_bars_from_jsonl(file_path: Union[str, Path], limit: Optional[int] = None) -> List[Bar]:
     """Deserialize candle Bars from a JSONL file."""
     path = Path(file_path)
     if not path.exists():
@@ -140,9 +141,7 @@ def load_bars_from_jsonl(
     return bars
 
 
-def save_buffer_snapshot(
-    buffer: MarketDataBuffer, file_path: Union[str, Path]
-) -> Dict[str, Any]:
+def save_buffer_snapshot(buffer: MarketDataBuffer, file_path: Union[str, Path]) -> Dict[str, Any]:
     """Persist the full in-memory state of a MarketDataBuffer to disk."""
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)

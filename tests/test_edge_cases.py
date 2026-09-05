@@ -175,7 +175,9 @@ class TestIndicatorEdgeCases:
 
         # value_at_risk & expected_shortfall
         assert value_at_risk([]) == 0.0
-        var_param = value_at_risk([-0.02, 0.01, -0.05, 0.03], method="parametric", confidence_level=0.90)
+        var_param = value_at_risk(
+            [-0.02, 0.01, -0.05, 0.03], method="parametric", confidence_level=0.90
+        )
         assert isinstance(var_param, float)
 
         with pytest.raises(ValueError, match="Unsupported VaR method"):
@@ -269,7 +271,9 @@ class TestBufferEdgeCases:
         assert impact["avg_execution_price"] == 101.0
 
         # Empty asks
-        ob_empty_asks = OrderBook(symbol="AAPL", bids=[OrderBookLevel(price=100.0, quantity=5.0)], asks=[])
+        ob_empty_asks = OrderBook(
+            symbol="AAPL", bids=[OrderBookLevel(price=100.0, quantity=5.0)], asks=[]
+        )
         buf.push_order_book(ob_empty_asks)
         impact_no_asks = buf.estimate_market_impact("AAPL", size=5.0, side=Side.BUY)
         assert impact_no_asks["executed_size"] == 0.0
@@ -466,6 +470,7 @@ class TestAlertsEdgeCases:
             raise RuntimeError("Boom!")
 
         received = []
+
         def _good_listener(evt):
             received.append(evt)
 

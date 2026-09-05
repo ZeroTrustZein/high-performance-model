@@ -119,7 +119,9 @@ class TestFullMarketLifecycle:
         rsi = relative_strength_index(aapl_prices, period=14)
         macd_line, sig_line, hist = macd(aapl_prices)
         bb = bollinger_bands(aapl_prices, period=20)
-        atr_vals = average_true_range(aapl_prices * 1.01, aapl_prices * 0.99, aapl_prices, period=14)
+        atr_vals = average_true_range(
+            aapl_prices * 1.01, aapl_prices * 0.99, aapl_prices, period=14
+        )
         vwap_val = volume_weighted_average_price(aapl_prices, aapl_vols)
         mom = momentum(aapl_prices, period=10)
         roc = rate_of_change(aapl_prices, period=10)

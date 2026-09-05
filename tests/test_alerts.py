@@ -76,7 +76,10 @@ class TestAlertEngine:
         engine = AlertEngine()
         engine.create_rule("MSFT", AlertType.VOLUME_SPIKE, 1000.0)
 
-        assert len(engine.on_tick(MarketTick(symbol="MSFT", price=400.0, size=50.0, side=Side.BUY))) == 0
+        assert (
+            len(engine.on_tick(MarketTick(symbol="MSFT", price=400.0, size=50.0, side=Side.BUY)))
+            == 0
+        )
         events = engine.on_tick(MarketTick(symbol="MSFT", price=400.0, size=1500.0, side=Side.BUY))
         assert len(events) == 1
         assert events[0].alert_type == AlertType.VOLUME_SPIKE

@@ -148,6 +148,7 @@ def test_jsonrpc_encoding():
 
 def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
     """Verify MCP protocol initialize, tools/list, and tool execution."""
+
     async def _test():
         # 1. Initialize
         init_req = JsonRpcRequest(
@@ -219,6 +220,7 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
 
 def test_memory_transport(mcp_server: MCPServer):
     """Verify bidirectional communication across MemoryTransport."""
+
     async def _test():
         transport = MemoryTransport()
         await transport.feed_input('{"jsonrpc": "2.0", "id": 100, "method": "ping"}')

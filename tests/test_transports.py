@@ -212,16 +212,36 @@ class TestJsonRpcParsing:
     def test_parse_message_missing_fields(self) -> None:
         # Missing jsonrpc
         req1, err1 = parse_message('{"id": 1, "method": "ping"}')
-        assert req1 is None and err1 is not None and err1.error is not None and err1.error.code == -32600
+        assert (
+            req1 is None
+            and err1 is not None
+            and err1.error is not None
+            and err1.error.code == -32600
+        )
 
         # Wrong jsonrpc version
         req2, err2 = parse_message('{"jsonrpc": "1.0", "id": 1, "method": "ping"}')
-        assert req2 is None and err2 is not None and err2.error is not None and err2.error.code == -32600
+        assert (
+            req2 is None
+            and err2 is not None
+            and err2.error is not None
+            and err2.error.code == -32600
+        )
 
         # Missing method
         req3, err3 = parse_message('{"jsonrpc": "2.0", "id": 1}')
-        assert req3 is None and err3 is not None and err3.error is not None and err3.error.code == -32600
+        assert (
+            req3 is None
+            and err3 is not None
+            and err3.error is not None
+            and err3.error.code == -32600
+        )
 
         # Non-string method
         req4, err4 = parse_message('{"jsonrpc": "2.0", "id": 1, "method": 12345}')
-        assert req4 is None and err4 is not None and err4.error is not None and err4.error.code == -32600
+        assert (
+            req4 is None
+            and err4 is not None
+            and err4.error is not None
+            and err4.error.code == -32600
+        )

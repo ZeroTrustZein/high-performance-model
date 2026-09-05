@@ -149,7 +149,9 @@ class MarketDataBuffer:
     @property
     def symbols(self) -> List[str]:
         """List all active symbols currently stored in buffer."""
-        return sorted(list(set(self._ticks.keys()) | set(self._bars.keys()) | set(self._order_books.keys())))
+        return sorted(
+            list(set(self._ticks.keys()) | set(self._bars.keys()) | set(self._order_books.keys()))
+        )
 
     def push_tick(self, tick: MarketTick) -> Optional[Bar]:
         """Push a new market tick into symbol buffer and feed default 1m aggregator."""
@@ -290,9 +292,7 @@ class MarketDataBuffer:
             return None
         return float(round(2.0 * abs(tick.price - ob.mid_price), 4))
 
-    def compute_order_flow_imbalance(
-        self, symbol: str, limit: int = 100
-    ) -> Dict[str, float]:
+    def compute_order_flow_imbalance(self, symbol: str, limit: int = 100) -> Dict[str, float]:
         """Calculate signed order flow volume imbalance across recent trade ticks."""
         ticks = self.get_ticks(symbol, limit=limit)
         if not ticks:
@@ -347,12 +347,14 @@ class MarketDataBuffer:
         profile_bins = []
         for i in range(bins):
             mid_bin = (bin_edges[i] + bin_edges[i + 1]) / 2.0
-            profile_bins.append({
-                "price_low": round(float(bin_edges[i]), 4),
-                "price_high": round(float(bin_edges[i + 1]), 4),
-                "price_mid": round(float(mid_bin), 4),
-                "volume": round(float(bin_volumes[i]), 4),
-            })
+            profile_bins.append(
+                {
+                    "price_low": round(float(bin_edges[i]), 4),
+                    "price_high": round(float(bin_edges[i + 1]), 4),
+                    "price_mid": round(float(mid_bin), 4),
+                    "volume": round(float(bin_volumes[i]), 4),
+                }
+            )
 
         return {
             "bins": profile_bins,
@@ -360,9 +362,7 @@ class MarketDataBuffer:
             "total_volume": round(float(np.sum(sizes)), 4),
         }
 
-    def estimate_market_impact(
-        self, symbol: str, size: float, side: Side
-    ) -> Dict[str, Any]:
+    def estimate_market_impact(self, symbol: str, size: float, side: Side) -> Dict[str, Any]:
         """Simulate order book execution to estimate slippage and market impact."""
         sym = symbol.upper()
         ob = self.get_latest_order_book(sym)

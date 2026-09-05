@@ -64,11 +64,14 @@ class TestCliServe:
 
     def test_serve_stdio(self, monkeypatch) -> None:
         ran = False
+
         def fake_run(coro):
             coro.close()
             nonlocal ran
             ran = True
+
         import asyncio
+
         monkeypatch.setattr(asyncio, "run", fake_run)
 
         runner = CliRunner()
@@ -78,11 +81,14 @@ class TestCliServe:
 
     def test_serve_sse(self, monkeypatch) -> None:
         ran = False
+
         def fake_run(coro):
             coro.close()
             nonlocal ran
             ran = True
+
         import asyncio
+
         monkeypatch.setattr(asyncio, "run", fake_run)
 
         runner = CliRunner()
@@ -95,7 +101,9 @@ class TestCliServe:
         def fake_run(coro):
             coro.close()
             raise KeyboardInterrupt
+
         import asyncio
+
         monkeypatch.setattr(asyncio, "run", fake_run)
 
         runner = CliRunner()
@@ -348,7 +356,19 @@ class TestCliExecution:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["exec", "submit", "NVDA", "--side", "sell", "-q", "10.0", "-t", "limit", "-p", "300.0"],
+            [
+                "exec",
+                "submit",
+                "NVDA",
+                "--side",
+                "sell",
+                "-q",
+                "10.0",
+                "-t",
+                "limit",
+                "-p",
+                "300.0",
+            ],
         )
         assert result.exit_code == 0
         assert "Simulated Order Placed" in result.output
@@ -413,7 +433,7 @@ class TestCliMCPInspector:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["mcp", "call", "-t", "get_market_quote", "-a", 'INVALID_JSON{'],
+            ["mcp", "call", "-t", "get_market_quote", "-a", "INVALID_JSON{"],
         )
         assert result.exit_code == 1
         assert "JSON Parse Error" in result.output
@@ -535,7 +555,9 @@ class TestFormatters:
 
     def test_mcp_formatters(self) -> None:
         tools = [{"name": "tool1", "description": "desc1", "inputSchema": {"required": ["arg1"]}}]
-        resources = [{"uri": "res://1", "name": "res1", "mimeType": "text/plain", "description": "desc"}]
+        resources = [
+            {"uri": "res://1", "name": "res1", "mimeType": "text/plain", "description": "desc"}
+        ]
         prompts = [{"name": "prompt1", "description": "desc", "arguments": [{"name": "arg1"}]}]
 
         t_table = format_mcp_tools_table(tools)

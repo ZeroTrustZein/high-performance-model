@@ -71,7 +71,6 @@ class MemoryTransport(Transport):
         await self.incoming.put(None)
 
 
-
 class StdioTransport(Transport):
     """Asynchronous standard I/O transport using line-delimited JSON-RPC."""
 

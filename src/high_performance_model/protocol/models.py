@@ -20,7 +20,9 @@ class ServerCapabilities(BaseModel):
     """Server-supported MCP capabilities."""
 
     tools: Dict[str, Any] = Field(default_factory=lambda: {"listChanged": True})
-    resources: Dict[str, Any] = Field(default_factory=lambda: {"subscribe": True, "listChanged": True})
+    resources: Dict[str, Any] = Field(
+        default_factory=lambda: {"subscribe": True, "listChanged": True}
+    )
     prompts: Dict[str, Any] = Field(default_factory=lambda: {"listChanged": True})
     logging: Dict[str, Any] = Field(default_factory=dict)
 

@@ -236,11 +236,7 @@ def format_orders_table(orders: List[SimulatedOrder]) -> Table:
         status_style = (
             "green bold"
             if ord.status.value == "filled"
-            else (
-                "yellow"
-                if ord.status.value in {"pending", "partially_filled"}
-                else "dim"
-            )
+            else ("yellow" if ord.status.value in {"pending", "partially_filled"} else "dim")
         )
         price_str = (
             f"${ord.price:,.2f}"

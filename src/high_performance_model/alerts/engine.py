@@ -81,16 +81,22 @@ class AlertEngine:
         if callback in self._listeners:
             self._listeners.remove(callback)
 
-    def _fire_alert(self, rule: AlertRule, current_value: float, custom_msg: Optional[str] = None) -> AlertEvent:
+    def _fire_alert(
+        self, rule: AlertRule, current_value: float, custom_msg: Optional[str] = None
+    ) -> AlertEvent:
         """Mark rule triggered and notify subscribers."""
         now = datetime.now(timezone.utc)
         rule.triggered = True
         rule.triggered_at = now
         rule.trigger_count += 1
 
-        msg = custom_msg or rule.message or (
-            f"Alert {rule.alert_type.value} on {rule.symbol}: "
-            f"current {current_value} breached threshold {rule.threshold}"
+        msg = (
+            custom_msg
+            or rule.message
+            or (
+                f"Alert {rule.alert_type.value} on {rule.symbol}: "
+                f"current {current_value} breached threshold {rule.threshold}"
+            )
         )
 
         event = AlertEvent(

@@ -35,9 +35,25 @@ from high_performance_model.types import (
 def sample_ticks() -> list[MarketTick]:
     base_ts = datetime(2026, 9, 6, 10, 0, 0, tzinfo=timezone.utc)
     return [
-        MarketTick(symbol="AAPL", price=150.25, size=10.0, side=Side.BUY, sequence=1, timestamp=base_ts),
-        MarketTick(symbol="AAPL", price=150.30, size=25.0, side=Side.BUY, sequence=2, timestamp=base_ts + timedelta(milliseconds=200)),
-        MarketTick(symbol="AAPL", price=150.20, size=15.0, side=Side.SELL, sequence=3, timestamp=base_ts + timedelta(milliseconds=500)),
+        MarketTick(
+            symbol="AAPL", price=150.25, size=10.0, side=Side.BUY, sequence=1, timestamp=base_ts
+        ),
+        MarketTick(
+            symbol="AAPL",
+            price=150.30,
+            size=25.0,
+            side=Side.BUY,
+            sequence=2,
+            timestamp=base_ts + timedelta(milliseconds=200),
+        ),
+        MarketTick(
+            symbol="AAPL",
+            price=150.20,
+            size=15.0,
+            side=Side.SELL,
+            sequence=3,
+            timestamp=base_ts + timedelta(milliseconds=500),
+        ),
     ]
 
 

@@ -34,14 +34,56 @@ class TestBarAggregation:
         base_time = datetime(2026, 9, 6, 12, 0, 0, tzinfo=timezone.utc)
         # Generate ticks across 3 minutes
         ticks = [
-            MarketTick(symbol="AAPL", price=150.0, size=10.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=10)),
-            MarketTick(symbol="AAPL", price=152.0, size=20.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=25)),
-            MarketTick(symbol="AAPL", price=149.0, size=15.0, side=Side.SELL, timestamp=base_time + timedelta(seconds=40)),
-            MarketTick(symbol="AAPL", price=151.0, size=5.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=55)),
+            MarketTick(
+                symbol="AAPL",
+                price=150.0,
+                size=10.0,
+                side=Side.BUY,
+                timestamp=base_time + timedelta(seconds=10),
+            ),
+            MarketTick(
+                symbol="AAPL",
+                price=152.0,
+                size=20.0,
+                side=Side.BUY,
+                timestamp=base_time + timedelta(seconds=25),
+            ),
+            MarketTick(
+                symbol="AAPL",
+                price=149.0,
+                size=15.0,
+                side=Side.SELL,
+                timestamp=base_time + timedelta(seconds=40),
+            ),
+            MarketTick(
+                symbol="AAPL",
+                price=151.0,
+                size=5.0,
+                side=Side.BUY,
+                timestamp=base_time + timedelta(seconds=55),
+            ),
             # Minute 2
-            MarketTick(symbol="AAPL", price=151.5, size=30.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=70)),
-            MarketTick(symbol="AAPL", price=153.0, size=10.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=90)),
-            MarketTick(symbol="AAPL", price=150.5, size=25.0, side=Side.SELL, timestamp=base_time + timedelta(seconds=110)),
+            MarketTick(
+                symbol="AAPL",
+                price=151.5,
+                size=30.0,
+                side=Side.BUY,
+                timestamp=base_time + timedelta(seconds=70),
+            ),
+            MarketTick(
+                symbol="AAPL",
+                price=153.0,
+                size=10.0,
+                side=Side.BUY,
+                timestamp=base_time + timedelta(seconds=90),
+            ),
+            MarketTick(
+                symbol="AAPL",
+                price=150.5,
+                size=25.0,
+                side=Side.SELL,
+                timestamp=base_time + timedelta(seconds=110),
+            ),
         ]
 
         bars = aggregate_bars_from_ticks(ticks, timeframe=BarTimeframe.MIN_1)
@@ -72,10 +114,28 @@ class TestBarAggregation:
         agg = BarAggregator("NVDA", timeframe="1m")
         base_time = datetime(2026, 9, 6, 14, 0, 0, tzinfo=timezone.utc)
 
-        t1 = MarketTick(symbol="NVDA", price=120.0, size=5.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=5))
-        t2 = MarketTick(symbol="NVDA", price=125.0, size=10.0, side=Side.BUY, timestamp=base_time + timedelta(seconds=30))
+        t1 = MarketTick(
+            symbol="NVDA",
+            price=120.0,
+            size=5.0,
+            side=Side.BUY,
+            timestamp=base_time + timedelta(seconds=5),
+        )
+        t2 = MarketTick(
+            symbol="NVDA",
+            price=125.0,
+            size=10.0,
+            side=Side.BUY,
+            timestamp=base_time + timedelta(seconds=30),
+        )
         # t3 crosses into the next minute
-        t3 = MarketTick(symbol="NVDA", price=124.0, size=8.0, side=Side.SELL, timestamp=base_time + timedelta(seconds=65))
+        t3 = MarketTick(
+            symbol="NVDA",
+            price=124.0,
+            size=8.0,
+            side=Side.SELL,
+            timestamp=base_time + timedelta(seconds=65),
+        )
 
         b1 = agg.update(t1)
         assert b1 is None

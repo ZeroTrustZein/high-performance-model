@@ -104,7 +104,9 @@ class TestOscillatorsAndBands:
         assert np.all((valid_rsi >= 0.0) & (valid_rsi <= 100.0))
 
     def test_macd_relationship(self, cyclical_prices: np.ndarray) -> None:
-        macd_line, signal_line, hist = macd(cyclical_prices, fast_period=12, slow_period=26, signal_period=9)
+        macd_line, signal_line, hist = macd(
+            cyclical_prices, fast_period=12, slow_period=26, signal_period=9
+        )
         assert len(macd_line) == len(cyclical_prices)
         assert len(signal_line) == len(cyclical_prices)
         assert len(hist) == len(cyclical_prices)
@@ -128,7 +130,9 @@ class TestOscillatorsAndBands:
     def test_stochastic_oscillator(self, cyclical_prices: np.ndarray) -> None:
         highs = cyclical_prices + 2.0
         lows = cyclical_prices - 2.0
-        k, d = stochastic_oscillator(highs, lows, cyclical_prices, k_period=14, d_period=3, smooth_k=3)
+        k, d = stochastic_oscillator(
+            highs, lows, cyclical_prices, k_period=14, d_period=3, smooth_k=3
+        )
         assert len(k) == len(cyclical_prices)
         assert len(d) == len(cyclical_prices)
 

@@ -1090,7 +1090,7 @@ def mcp_prompts() -> None:
     "--args",
     "-a",
     default="{}",
-    help="Tool arguments as JSON string (e.g. '{\"symbol\": \"AAPL\"}')",
+    help='Tool arguments as JSON string (e.g. \'{"symbol": "AAPL"}\')',
 )
 def mcp_call(tool: str, args: str) -> None:
     """Invoke an MCP tool directly through the server engine."""

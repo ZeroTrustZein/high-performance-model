@@ -140,9 +140,7 @@ class MCPServer:
 
             if method == "tools/list":
                 tool_list = list(self.tools.values())
-                return make_success_response(
-                    req_id, ListToolsResult(tools=tool_list).model_dump()
-                )
+                return make_success_response(req_id, ListToolsResult(tools=tool_list).model_dump())
 
             if method == "tools/call":
                 tool_name = params.get("name")
@@ -160,9 +158,7 @@ class MCPServer:
                     return make_success_response(req_id, raw_result.model_dump())
                 return make_success_response(
                     req_id,
-                    CallToolResult(
-                        content=[TextContent(text=str(raw_result))]
-                    ).model_dump(),
+                    CallToolResult(content=[TextContent(text=str(raw_result))]).model_dump(),
                 )
 
             if method == "resources/list":
@@ -192,9 +188,7 @@ class MCPServer:
 
             if method == "prompts/list":
                 p_list = list(self.prompts.values())
-                return make_success_response(
-                    req_id, ListPromptsResult(prompts=p_list).model_dump()
-                )
+                return make_success_response(req_id, ListPromptsResult(prompts=p_list).model_dump())
 
             if method == "prompts/get":
                 p_name = params.get("name")

@@ -84,6 +84,49 @@ class ExecutionSimulator:
             order.updated_at = datetime.now(timezone.utc)
         return order
 
+    def _record_fill(
+        self,
+        symbol: str,
+        side: Side,
+        fill_qty: float,
+        fill_price: float,
+        order_type: OrderType,
+        fee_bps: float,
+        timestamp: datetime,
+        maker_order_id: Optional[str] = None,
+        taker_order_id: Optional[str] = None,
+    ) -> TradeExecution:
+        """Record trade execution and update portfolio cash, fees, and position state."""
+        cost = fill_qty * fill_price
+        fee = round(cost * (fee_bps / 10_000.0), 6)
+
+        trade = TradeExecution(
+            trade_id=f"trd_{uuid4().hex[:8]}",
+            symbol=symbol,
+            price=fill_price,
+            size=round(fill_qty, 6),
+            side=side,
+            order_type=order_type,
+            maker_order_id=maker_order_id,
+            taker_order_id=taker_order_id,
+            fee=fee,
+            timestamp=timestamp,
+        )
+        self.trades.append(trade)
+
+        pos = self.portfolio.get_or_create_position(symbol)
+        pnl_realized = pos.apply_fill(side, fill_qty, fill_price)
+        pos.update_market_price(fill_price)
+
+        if side == Side.BUY:
+            self.portfolio.cash_balance -= cost + fee
+        else:
+            self.portfolio.cash_balance += cost - fee
+
+        self.portfolio.total_fees_paid += fee
+        self.portfolio.total_realized_pnl += pnl_realized
+        return trade
+
     def match_market_order(
         self, order: SimulatedOrder, order_book: OrderBook
     ) -> List[TradeExecution]:
@@ -106,38 +149,20 @@ class ExecutionSimulator:
                 continue
 
             fill_price = level.price
-            cost = fill_qty * fill_price
-            fee = round(cost * (self.taker_fee_bps / 10_000.0), 6)
-
-            trade = TradeExecution(
-                trade_id=f"trd_{uuid4().hex[:8]}",
+            trade = self._record_fill(
                 symbol=order.symbol,
-                price=fill_price,
-                size=round(fill_qty, 6),
                 side=order.side,
+                fill_qty=fill_qty,
+                fill_price=fill_price,
                 order_type=OrderType.MARKET,
-                taker_order_id=order.order_id,
-                fee=fee,
+                fee_bps=self.taker_fee_bps,
                 timestamp=datetime.now(timezone.utc),
+                taker_order_id=order.order_id,
             )
             trades.append(trade)
-            self.trades.append(trade)
-
-            # Update portfolio and position
-            pos = self.portfolio.get_or_create_position(order.symbol)
-            pnl_realized = pos.apply_fill(order.side, fill_qty, fill_price)
-            pos.update_market_price(fill_price)
-
-            if order.side == Side.BUY:
-                self.portfolio.cash_balance -= (cost + fee)
-            else:
-                self.portfolio.cash_balance += (cost - fee)
-
-            self.portfolio.total_fees_paid += fee
-            self.portfolio.total_realized_pnl += pnl_realized
 
             total_filled += fill_qty
-            total_cost += cost
+            total_cost += fill_qty * fill_price
             remaining -= fill_qty
 
             if remaining <= 1e-9:
@@ -181,38 +206,21 @@ class ExecutionSimulator:
                 if can_fill:
                     fill_qty = order.remaining_quantity
                     fill_price = order.price
-                    cost = fill_qty * fill_price
-                    fee = round(cost * (self.maker_fee_bps / 10_000.0), 6)
-
-                    trade = TradeExecution(
-                        trade_id=f"trd_{uuid4().hex[:8]}",
+                    trade = self._record_fill(
                         symbol=sym,
-                        price=fill_price,
-                        size=fill_qty,
                         side=order.side,
+                        fill_qty=fill_qty,
+                        fill_price=fill_price,
                         order_type=OrderType.LIMIT,
-                        maker_order_id=order.order_id,
-                        fee=fee,
+                        fee_bps=self.maker_fee_bps,
                         timestamp=tick.timestamp,
+                        maker_order_id=order.order_id,
                     )
                     trades.append(trade)
-                    self.trades.append(trade)
-
-                    pos = self.portfolio.get_or_create_position(sym)
-                    pnl_realized = pos.apply_fill(order.side, fill_qty, fill_price)
-                    pos.update_market_price(tick.price)
-
-                    if order.side == Side.BUY:
-                        self.portfolio.cash_balance -= (cost + fee)
-                    else:
-                        self.portfolio.cash_balance += (cost - fee)
-
-                    self.portfolio.total_fees_paid += fee
-                    self.portfolio.total_realized_pnl += pnl_realized
 
                     order.filled_quantity = order.quantity
                     order.average_fill_price = fill_price
-                    order.fee_paid += fee
+                    order.fee_paid += trade.fee
                     order.status = OrderStatus.FILLED
                     order.updated_at = datetime.now(timezone.utc)
 

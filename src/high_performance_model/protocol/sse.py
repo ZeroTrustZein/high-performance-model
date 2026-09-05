@@ -140,9 +140,7 @@ class SSEServer:
             elif method == "POST" and path == "/messages":
                 await self._handle_post_message(reader, writer, headers, query_params)
             else:
-                writer.write(
-                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found"
-                )
+                writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found")
                 await writer.drain()
                 writer.close()
 

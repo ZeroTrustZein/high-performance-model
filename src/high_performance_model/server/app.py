@@ -102,7 +102,10 @@ def create_fintech_mcp_server(
         input_schema={
             "type": "object",
             "properties": {
-                "symbol": {"type": "string", "description": "Stock or crypto symbol (e.g. AAPL, NVDA)"}
+                "symbol": {
+                    "type": "string",
+                    "description": "Stock or crypto symbol (e.g. AAPL, NVDA)",
+                }
             },
             "required": ["symbol"],
         },
@@ -124,9 +127,7 @@ def create_fintech_mcp_server(
             "spread": ob.spread if ob else None,
             "mid_price": ob.mid_price if ob else None,
         }
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(payload, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
 
     # --- Tool 2: get_order_book_depth ---
     @server.tool(
@@ -136,7 +137,11 @@ def create_fintech_mcp_server(
             "type": "object",
             "properties": {
                 "symbol": {"type": "string", "description": "Market ticker symbol"},
-                "depth": {"type": "integer", "description": "Number of price levels (1-20)", "default": 5},
+                "depth": {
+                    "type": "integer",
+                    "description": "Number of price levels (1-20)",
+                    "default": 5,
+                },
             },
             "required": ["symbol"],
         },
@@ -156,9 +161,7 @@ def create_fintech_mcp_server(
             "asks": [lvl.model_dump() for lvl in ob.asks[:depth]],
             "timestamp": ob.timestamp.isoformat(),
         }
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(payload, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
 
     # --- Tool 3: calculate_technical_indicators ---
     @server.tool(
@@ -189,8 +192,13 @@ def create_fintech_mcp_server(
             prices = buffer.get_price_series(sym, limit=200)
             volumes = buffer.get_volume_series(sym, limit=200)
 
-        requested = set(i.lower() for i in (indicators or ["sma", "ema", "rsi", "macd", "bollinger"]))
-        out: Dict[str, Any] = {"symbol": sym, "last_price": float(prices[-1]) if len(prices) else None}
+        requested = set(
+            i.lower() for i in (indicators or ["sma", "ema", "rsi", "macd", "bollinger"])
+        )
+        out: Dict[str, Any] = {
+            "symbol": sym,
+            "last_price": float(prices[-1]) if len(prices) else None,
+        }
 
         if "sma" in requested:
             arr = simple_moving_average(prices, period=20)
@@ -254,9 +262,7 @@ def create_fintech_mcp_server(
                 "percent_d": float(round(valid_d[-1], 2)) if len(valid_d) else None,
             }
 
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(out, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(out, indent=2))])
 
     # --- Tool 4: compute_risk_metrics ---
     @server.tool(
@@ -264,9 +270,7 @@ def create_fintech_mcp_server(
         description="Compute realized volatility, Sharpe ratio, Sortino ratio, max drawdown, and VaR/CVaR for a symbol.",
         input_schema={
             "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "Market ticker symbol"}
-            },
+            "properties": {"symbol": {"type": "string", "description": "Market ticker symbol"}},
             "required": ["symbol"],
         },
     )
@@ -296,9 +300,7 @@ def create_fintech_mcp_server(
             "expected_shortfall_95": cvar_95,
             "sample_size_ticks": len(prices),
         }
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(payload, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
 
     # --- Tool 5: get_volume_profile ---
     @server.tool(
@@ -329,20 +331,20 @@ def create_fintech_mcp_server(
             "properties": {
                 "symbol": {"type": "string", "description": "Market ticker symbol"},
                 "size": {"type": "number", "description": "Order size to execute"},
-                "side": {"type": "string", "description": "Order side ('buy' or 'sell')", "default": "buy"},
+                "side": {
+                    "type": "string",
+                    "description": "Order side ('buy' or 'sell')",
+                    "default": "buy",
+                },
             },
             "required": ["symbol", "size"],
         },
     )
-    async def estimate_market_impact(
-        symbol: str, size: float, side: str = "buy"
-    ) -> CallToolResult:
+    async def estimate_market_impact(symbol: str, size: float, side: str = "buy") -> CallToolResult:
         sym = symbol.upper()
         exec_side = Side.SELL if side.lower() == "sell" else Side.BUY
         impact = buffer.estimate_market_impact(sym, size=size, side=exec_side)
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(impact, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(impact, indent=2))])
 
     # --- Tool 7: submit_simulated_order ---
     @server.tool(
@@ -354,9 +356,19 @@ def create_fintech_mcp_server(
                 "symbol": {"type": "string", "description": "Market ticker symbol"},
                 "side": {"type": "string", "description": "Order side: 'buy' or 'sell'"},
                 "quantity": {"type": "number", "description": "Order quantity"},
-                "order_type": {"type": "string", "description": "Type: 'market', 'limit', 'stop'", "default": "market"},
-                "price": {"type": "number", "description": "Limit price (required for limit orders)"},
-                "stop_price": {"type": "number", "description": "Stop trigger price (for stop orders)"},
+                "order_type": {
+                    "type": "string",
+                    "description": "Type: 'market', 'limit', 'stop'",
+                    "default": "market",
+                },
+                "price": {
+                    "type": "number",
+                    "description": "Limit price (required for limit orders)",
+                },
+                "stop_price": {
+                    "type": "number",
+                    "description": "Stop trigger price (for stop orders)",
+                },
             },
             "required": ["symbol", "side", "quantity"],
         },
@@ -380,9 +392,7 @@ def create_fintech_mcp_server(
             stop_price=stop_price,
             auto_match=True,
         )
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(order.to_dict(), indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(order.to_dict(), indent=2))])
 
     # --- Tool 8: cancel_simulated_order ---
     @server.tool(
@@ -391,7 +401,10 @@ def create_fintech_mcp_server(
         input_schema={
             "type": "object",
             "properties": {
-                "order_id": {"type": "string", "description": "Unique identifier of order to cancel"}
+                "order_id": {
+                    "type": "string",
+                    "description": "Unique identifier of order to cancel",
+                }
             },
             "required": ["order_id"],
         },
@@ -403,9 +416,7 @@ def create_fintech_mcp_server(
                 content=[TextContent(text=json.dumps({"error": f"Order not found: {order_id}"}))],
                 isError=True,
             )
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(cancelled.to_dict(), indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(cancelled.to_dict(), indent=2))])
 
     # --- Tool 9: get_portfolio_state ---
     @server.tool(
@@ -415,9 +426,7 @@ def create_fintech_mcp_server(
     )
     async def get_portfolio_state() -> CallToolResult:
         summary = exec_sim.get_portfolio_summary()
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(summary, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(summary, indent=2))])
 
     # --- Tool 10: create_market_alert ---
     @server.tool(
@@ -432,7 +441,11 @@ def create_fintech_mcp_server(
                     "description": "Rule type: 'price_above', 'price_below', 'spread_wider_than', 'imbalance_spike', 'volume_spike'",
                 },
                 "threshold": {"type": "number", "description": "Trigger threshold value"},
-                "one_shot": {"type": "boolean", "description": "Deactivate after first firing", "default": True},
+                "one_shot": {
+                    "type": "boolean",
+                    "description": "Deactivate after first firing",
+                    "default": True,
+                },
                 "message": {"type": "string", "description": "Custom notification message"},
             },
             "required": ["symbol", "alert_type", "threshold"],
@@ -453,9 +466,7 @@ def create_fintech_mcp_server(
             one_shot=one_shot,
             message=message,
         )
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(rule.to_dict(), indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(rule.to_dict(), indent=2))])
 
     # --- Tool 11: list_market_alerts ---
     @server.tool(
@@ -463,18 +474,14 @@ def create_fintech_mcp_server(
         description="List active alert rules and recent fired alert events.",
         input_schema={
             "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "Optional symbol filter"}
-            },
+            "properties": {"symbol": {"type": "string", "description": "Optional symbol filter"}},
         },
     )
     async def list_market_alerts(symbol: Optional[str] = None) -> CallToolResult:
         rules = [r.to_dict() for r in alerts.get_active_rules(symbol=symbol)]
         events = [e.to_dict() for e in alerts.get_event_history(symbol=symbol)]
         payload = {"active_rules": rules, "recent_events": events}
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(payload, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
 
     # --- Tool 12: export_buffer_snapshot ---
     @server.tool(
@@ -483,15 +490,17 @@ def create_fintech_mcp_server(
         input_schema={
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Destination file path", "default": "data/snapshot.json"}
+                "file_path": {
+                    "type": "string",
+                    "description": "Destination file path",
+                    "default": "data/snapshot.json",
+                }
             },
         },
     )
     async def export_buffer_snapshot(file_path: str = "data/snapshot.json") -> CallToolResult:
         res = save_buffer_snapshot(buffer, file_path)
-        return CallToolResult(
-            content=[TextContent(text=json.dumps(res, indent=2))]
-        )
+        return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
 
     # --- Tool 13: import_buffer_snapshot ---
     @server.tool(
@@ -500,7 +509,11 @@ def create_fintech_mcp_server(
         input_schema={
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Snapshot file path", "default": "data/snapshot.json"}
+                "file_path": {
+                    "type": "string",
+                    "description": "Snapshot file path",
+                    "default": "data/snapshot.json",
+                }
             },
             "required": ["file_path"],
         },
@@ -513,9 +526,7 @@ def create_fintech_mcp_server(
                 "file_path": file_path,
                 "buffered_ticks": sum(len(buffer.get_ticks(s)) for s in symbols),
             }
-            return CallToolResult(
-                content=[TextContent(text=json.dumps(res, indent=2))]
-            )
+            return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
         except Exception as exc:
             return CallToolResult(
                 content=[TextContent(text=json.dumps({"status": "error", "error": str(exc)}))],
@@ -537,11 +548,13 @@ def create_fintech_mcp_server(
                 "vwap": buffer.compute_vwap(s),
             }
         return ReadResourceResult(
-            contents=[{
-                "uri": uri,
-                "mimeType": "application/json",
-                "text": json.dumps(snapshot, indent=2),
-            }]
+            contents=[
+                {
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps(snapshot, indent=2),
+                }
+            ]
         )
 
     @server.resource(
@@ -554,22 +567,40 @@ def create_fintech_mcp_server(
             "indicators": [
                 {"name": "sma", "full_name": "Simple Moving Average", "default_period": 20},
                 {"name": "ema", "full_name": "Exponential Moving Average", "default_period": 20},
-                {"name": "rsi", "full_name": "Relative Strength Index", "default_period": 14, "range": [0, 100]},
-                {"name": "macd", "full_name": "Moving Average Convergence Divergence", "fast": 12, "slow": 26, "signal": 9},
+                {
+                    "name": "rsi",
+                    "full_name": "Relative Strength Index",
+                    "default_period": 14,
+                    "range": [0, 100],
+                },
+                {
+                    "name": "macd",
+                    "full_name": "Moving Average Convergence Divergence",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9,
+                },
                 {"name": "bollinger", "full_name": "Bollinger Bands", "period": 20, "std_dev": 2.0},
                 {"name": "atr", "full_name": "Average True Range", "default_period": 14},
                 {"name": "vwap", "full_name": "Volume-Weighted Average Price"},
                 {"name": "momentum", "full_name": "Price Momentum", "default_period": 10},
                 {"name": "roc", "full_name": "Rate of Change", "default_period": 10},
-                {"name": "stochastic", "full_name": "Stochastic Oscillator", "k_period": 14, "d_period": 3},
+                {
+                    "name": "stochastic",
+                    "full_name": "Stochastic Oscillator",
+                    "k_period": 14,
+                    "d_period": 3,
+                },
             ]
         }
         return ReadResourceResult(
-            contents=[{
-                "uri": uri,
-                "mimeType": "application/json",
-                "text": json.dumps(catalog, indent=2),
-            }]
+            contents=[
+                {
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps(catalog, indent=2),
+                }
+            ]
         )
 
     @server.resource(
@@ -580,11 +611,13 @@ def create_fintech_mcp_server(
     async def resource_portfolio_state(uri: str) -> ReadResourceResult:
         state = exec_sim.get_portfolio_summary()
         return ReadResourceResult(
-            contents=[{
-                "uri": uri,
-                "mimeType": "application/json",
-                "text": json.dumps(state, indent=2),
-            }]
+            contents=[
+                {
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps(state, indent=2),
+                }
+            ]
         )
 
     @server.resource(
@@ -595,11 +628,13 @@ def create_fintech_mcp_server(
     async def resource_alerts_active(uri: str) -> ReadResourceResult:
         data = alerts.to_dict()
         return ReadResourceResult(
-            contents=[{
-                "uri": uri,
-                "mimeType": "application/json",
-                "text": json.dumps(data, indent=2),
-            }]
+            contents=[
+                {
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps(data, indent=2),
+                }
+            ]
         )
 
     @server.resource(
@@ -610,11 +645,13 @@ def create_fintech_mcp_server(
     async def resource_execution_history(uri: str) -> ReadResourceResult:
         trades = [t.to_dict() for t in exec_sim.get_trade_history()[-50:]]
         return ReadResourceResult(
-            contents=[{
-                "uri": uri,
-                "mimeType": "application/json",
-                "text": json.dumps({"trades": trades}, indent=2),
-            }]
+            contents=[
+                {
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps({"trades": trades}, indent=2),
+                }
+            ]
         )
 
     # --- Prompts ---
@@ -644,7 +681,9 @@ def create_fintech_mcp_server(
         name="evaluate_trading_opportunity",
         description="Prompt template for evaluating entry, exit, and risk-reward for a prospective trade.",
     )
-    async def prompt_trading_opportunity(symbol: str = "AAPL", side: str = "buy") -> GetPromptResult:
+    async def prompt_trading_opportunity(
+        symbol: str = "AAPL", side: str = "buy"
+    ) -> GetPromptResult:
         sym = symbol.upper()
         s_side = side.lower()
         return GetPromptResult(

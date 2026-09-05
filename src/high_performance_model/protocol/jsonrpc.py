@@ -54,7 +54,9 @@ def parse_message(raw_line: str) -> Tuple[Optional[JsonRpcRequest], Optional[Jso
         return None, make_error_response(None, PARSE_ERROR, f"Parse error: {exc}")
 
     if not isinstance(data, dict):
-        return None, make_error_response(None, INVALID_REQUEST, "Invalid Request: expected JSON object")
+        return None, make_error_response(
+            None, INVALID_REQUEST, "Invalid Request: expected JSON object"
+        )
 
     if data.get("jsonrpc") != "2.0" or "method" not in data or not isinstance(data["method"], str):
         return None, make_error_response(

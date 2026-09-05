@@ -103,7 +103,9 @@ class TestExecutionSimulator:
 
         # Buy 25 units: takes 10 @ 101, 15 @ 102
         # Avg price: (10*101 + 15*102) / 25 = (1010 + 1530) / 25 = 2540 / 25 = 101.6
-        order = sim.submit_order(symbol="AAPL", side=Side.BUY, quantity=25.0, order_type=OrderType.MARKET)
+        order = sim.submit_order(
+            symbol="AAPL", side=Side.BUY, quantity=25.0, order_type=OrderType.MARKET
+        )
         assert order.status == OrderStatus.FILLED
         assert order.filled_quantity == 25.0
         assert order.average_fill_price == 101.6

@@ -133,7 +133,9 @@ class Position(BaseModel):
             if self.quantity <= 0:
                 # Adding to short position
                 new_qty = self.quantity - fill_qty
-                total_cost = (abs(self.quantity) * self.average_entry_price) + (fill_qty * fill_price)
+                total_cost = (abs(self.quantity) * self.average_entry_price) + (
+                    fill_qty * fill_price
+                )
                 self.average_entry_price = round(total_cost / abs(new_qty), 4)
                 self.quantity = round(new_qty, 6)
             else:
@@ -194,7 +196,9 @@ class Portfolio(BaseModel):
         """Percentage return on initial cash."""
         if self.initial_cash <= 0:
             return 0.0
-        return round(((self.total_portfolio_value - self.initial_cash) / self.initial_cash) * 100.0, 4)
+        return round(
+            ((self.total_portfolio_value - self.initial_cash) / self.initial_cash) * 100.0, 4
+        )
 
     def get_or_create_position(self, symbol: str) -> Position:
         """Retrieve existing position or create a clean one."""

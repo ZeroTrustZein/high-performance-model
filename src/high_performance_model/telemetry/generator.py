@@ -146,11 +146,23 @@ class SyntheticMarketFeed:
             # Volume distribution with imbalance bias
             bid_scale = 50.0 * (1.0 + imbalance_bias)
             ask_scale = 50.0 * (1.0 - imbalance_bias)
-            bid_qty = round(float(np.random.gamma(shape=2.0, scale=max(5.0, bid_scale)) * (1.0 + i * 0.2)), 2)
-            ask_qty = round(float(np.random.gamma(shape=2.0, scale=max(5.0, ask_scale)) * (1.0 + i * 0.2)), 2)
+            bid_qty = round(
+                float(np.random.gamma(shape=2.0, scale=max(5.0, bid_scale)) * (1.0 + i * 0.2)), 2
+            )
+            ask_qty = round(
+                float(np.random.gamma(shape=2.0, scale=max(5.0, ask_scale)) * (1.0 + i * 0.2)), 2
+            )
 
-            bids.append(OrderBookLevel(price=bid_price, quantity=bid_qty, orders_count=random.randint(1, 10)))
-            asks.append(OrderBookLevel(price=ask_price, quantity=ask_qty, orders_count=random.randint(1, 10)))
+            bids.append(
+                OrderBookLevel(
+                    price=bid_price, quantity=bid_qty, orders_count=random.randint(1, 10)
+                )
+            )
+            asks.append(
+                OrderBookLevel(
+                    price=ask_price, quantity=ask_qty, orders_count=random.randint(1, 10)
+                )
+            )
 
         return OrderBook(
             symbol=sym,
