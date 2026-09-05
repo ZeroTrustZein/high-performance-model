@@ -164,6 +164,11 @@ class MarketDataBuffer:
         self._bars: Dict[str, deque[Bar]] = {}
         self._aggregators: Dict[Tuple[str, BarTimeframe], BarAggregator] = {}
 
+    @property
+    def symbols(self) -> List[str]:
+        """List all active symbols currently stored in buffer."""
+        return sorted(list(set(self._ticks.keys()) | set(self._bars.keys()) | set(self._order_books.keys())))
+
     def push_tick(self, tick: MarketTick) -> Optional[Bar]:
         """Push a new market tick into symbol buffer and feed default 1m aggregator."""
         sym = tick.symbol
