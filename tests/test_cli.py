@@ -59,6 +59,54 @@ class TestCliBasicsAndHelp:
         assert "0.1.0" in result.output
 
 
+class TestCliServe:
+    """Verify MCP serve command with stdio and sse transports."""
+
+    def test_serve_stdio(self, monkeypatch) -> None:
+        ran = False
+        def fake_run(coro):
+            coro.close()
+            nonlocal ran
+            ran = True
+        import asyncio
+        monkeypatch.setattr(asyncio, "run", fake_run)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["serve", "--transport", "stdio", "--capacity", "500"])
+        assert result.exit_code == 0
+        assert ran is True
+
+    def test_serve_sse(self, monkeypatch) -> None:
+        ran = False
+        def fake_run(coro):
+            coro.close()
+            nonlocal ran
+            ran = True
+        import asyncio
+        monkeypatch.setattr(asyncio, "run", fake_run)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["serve", "--transport", "sse", "--port", "8888"])
+        assert result.exit_code == 0
+        assert "Starting FinTech MCP Server" in result.output
+        assert ran is True
+
+    def test_serve_keyboard_interrupt(self, monkeypatch) -> None:
+        def fake_run(coro):
+            coro.close()
+            raise KeyboardInterrupt
+        import asyncio
+        monkeypatch.setattr(asyncio, "run", fake_run)
+
+        runner = CliRunner()
+        result_stdio = runner.invoke(cli, ["serve", "--transport", "stdio"])
+        assert result_stdio.exit_code == 0
+
+        result_sse = runner.invoke(cli, ["serve", "--transport", "sse"])
+        assert result_sse.exit_code == 0
+        assert "Shutting down SSE server" in result_sse.output
+
+
 class TestCliQuoteAndMarket:
     """Verify market quote and order book snapshot CLI."""
 

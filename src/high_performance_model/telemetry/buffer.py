@@ -158,6 +158,8 @@ class MarketDataBuffer:
     """In-memory low-latency telemetry buffer with rolling window metric computations."""
 
     def __init__(self, capacity: int = 50_000) -> None:
+        if capacity < 1:
+            raise ValueError("capacity must be at least 1")
         self.capacity = capacity
         self._ticks: Dict[str, deque[MarketTick]] = {}
         self._order_books: Dict[str, OrderBook] = {}

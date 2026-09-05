@@ -142,3 +142,86 @@ class TestSSEServerIntegration:
                 await sse_srv.stop()
 
         asyncio.run(_run())
+
+
+class TestStdioTransport:
+    """Test standard I/O line-delimited JSON-RPC transport."""
+
+    def test_stdio_read_write_and_close(self, monkeypatch) -> None:
+        import io
+        import sys
+
+        from high_performance_model.protocol.transports import StdioTransport
+
+        input_data = '{"jsonrpc": "2.0", "id": 1, "method": "ping"}\n'
+        fake_stdin = io.StringIO(input_data)
+        fake_stdout = io.StringIO()
+
+        monkeypatch.setattr(sys, "stdin", fake_stdin)
+        monkeypatch.setattr(sys, "stdout", fake_stdout)
+
+        async def _run():
+            transport = StdioTransport()
+            # Read line
+            line = await transport.read_message()
+            assert line == '{"jsonrpc": "2.0", "id": 1, "method": "ping"}'
+
+            # Next read is EOF
+            eof = await transport.read_message()
+            assert eof is None
+
+            # Write line
+            await transport.write_message('{"jsonrpc": "2.0", "id": 1, "result": {}}')
+            assert '{"jsonrpc": "2.0", "id": 1, "result": {}}\n' in fake_stdout.getvalue()
+
+            # Close transport
+            await transport.close()
+            assert transport._closed is True
+            assert await transport.read_message() is None
+
+            # Write on closed is no-op
+            current_out = fake_stdout.getvalue()
+            await transport.write_message("ignored")
+            assert fake_stdout.getvalue() == current_out
+
+        asyncio.run(_run())
+
+
+class TestJsonRpcParsing:
+    """Test JSON-RPC message decoding and error response generators."""
+
+    def test_parse_message_blank(self) -> None:
+        req, err = parse_message("")
+        assert req is None and err is None
+
+        req, err = parse_message("   \n\t  ")
+        assert req is None and err is None
+
+    def test_parse_message_invalid_json(self) -> None:
+        req, err = parse_message("NOT_JSON")
+        assert req is None
+        assert err is not None and err.error is not None
+        assert err.error.code == -32700
+
+    def test_parse_message_non_dict(self) -> None:
+        req, err = parse_message("[1, 2, 3]")
+        assert req is None
+        assert err is not None and err.error is not None
+        assert err.error.code == -32600
+
+    def test_parse_message_missing_fields(self) -> None:
+        # Missing jsonrpc
+        req1, err1 = parse_message('{"id": 1, "method": "ping"}')
+        assert req1 is None and err1 is not None and err1.error is not None and err1.error.code == -32600
+
+        # Wrong jsonrpc version
+        req2, err2 = parse_message('{"jsonrpc": "1.0", "id": 1, "method": "ping"}')
+        assert req2 is None and err2 is not None and err2.error is not None and err2.error.code == -32600
+
+        # Missing method
+        req3, err3 = parse_message('{"jsonrpc": "2.0", "id": 1}')
+        assert req3 is None and err3 is not None and err3.error is not None and err3.error.code == -32600
+
+        # Non-string method
+        req4, err4 = parse_message('{"jsonrpc": "2.0", "id": 1, "method": 12345}')
+        assert req4 is None and err4 is not None and err4.error is not None and err4.error.code == -32600

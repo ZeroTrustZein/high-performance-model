@@ -48,10 +48,13 @@ class HistoricalReplayEngine:
             self._ticks = list(ticks)
         elif source_file is not None:
             p = Path(source_file)
-            if p.suffix.lower() == ".csv":
+            ext = p.suffix.lower()
+            if ext == ".csv":
                 self._ticks = load_ticks_from_csv(p)
-            else:
+            elif ext in {".jsonl", ".json"}:
                 self._ticks = load_ticks_from_jsonl(p)
+            else:
+                raise ValueError(f"Unsupported file extension: {p.suffix}")
         else:
             self._ticks = []
 
