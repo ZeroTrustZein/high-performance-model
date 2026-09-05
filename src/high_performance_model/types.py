@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
 
 class Side(str, Enum):
@@ -119,6 +119,10 @@ def validate_symbol(symbol: str) -> str:
     return cleaned
 
 
+# Annotated type for automatic symbol validation and normalization in Pydantic models
+Symbol = Annotated[str, BeforeValidator(validate_symbol)]
+
+
 def timeframe_to_seconds(timeframe: Union[BarTimeframe, str]) -> int:
     """Convert bar timeframe enum or code string to total seconds."""
     raw = timeframe.value if isinstance(timeframe, BarTimeframe) else str(timeframe).strip().lower()
@@ -166,7 +170,7 @@ def compute_microprice(bid: float, ask: float, bid_qty: float, ask_qty: float) -
 class MarketTick(BaseModel):
     """High-frequency market tick telemetry record."""
 
-    symbol: str
+    symbol: Symbol
     price: float = Field(..., gt=0.0)
     size: float = Field(..., ge=0.0)
     side: Side
@@ -174,11 +178,6 @@ class MarketTick(BaseModel):
     sequence: int = Field(default=0, ge=0)
     exchange: Optional[str] = None
     conditions: List[str] = Field(default_factory=list)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @property
     def notional(self) -> float:
@@ -239,16 +238,11 @@ class OrderBookLevel(BaseModel):
 class OrderBook(BaseModel):
     """Level-2 order book snapshot."""
 
-    symbol: str
+    symbol: Symbol
     bids: List[OrderBookLevel] = Field(default_factory=list)
     asks: List[OrderBookLevel] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     sequence: int = Field(default=0, ge=0)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @property
     def best_bid(self) -> Optional[float]:
@@ -369,7 +363,7 @@ class OrderBook(BaseModel):
 class Bar(BaseModel):
     """Aggregated OHLCV candle bar."""
 
-    symbol: str
+    symbol: Symbol
     open: float = Field(..., gt=0.0)
     high: float = Field(..., gt=0.0)
     low: float = Field(..., gt=0.0)
@@ -380,11 +374,6 @@ class Bar(BaseModel):
     vwap: Optional[float] = None
     trades_count: int = Field(default=0, ge=0)
     turnover: Optional[float] = None
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @model_validator(mode="after")
     def _validate_candle_geometry(self) -> Bar:
@@ -454,7 +443,7 @@ class Bar(BaseModel):
 class Quote(BaseModel):
     """Top-of-book market quote representation."""
 
-    symbol: str
+    symbol: Symbol
     bid: float = Field(..., gt=0.0)
     ask: float = Field(..., gt=0.0)
     bid_size: float = Field(..., ge=0.0)
@@ -462,11 +451,6 @@ class Quote(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_price: Optional[float] = Field(default=None, gt=0.0)
     last_size: Optional[float] = Field(default=None, ge=0.0)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @model_validator(mode="after")
     def _validate_quote(self) -> Quote:
@@ -511,7 +495,7 @@ class Quote(BaseModel):
 class MarketDepthSnapshot(BaseModel):
     """Snapshot data contract of order book depth for tool responses."""
 
-    symbol: str
+    symbol: Symbol
     bids: List[OrderBookLevel] = Field(default_factory=list)
     asks: List[OrderBookLevel] = Field(default_factory=list)
     spread: Optional[float] = None
@@ -519,11 +503,6 @@ class MarketDepthSnapshot(BaseModel):
     imbalance: float = 0.0
     sequence: Optional[int] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert snapshot to dictionary."""
@@ -562,16 +541,11 @@ class IndicatorConfig(BaseModel):
 class TechnicalIndicatorResult(BaseModel):
     """Calculated technical indicator metrics."""
 
-    symbol: str
+    symbol: Symbol
     indicator: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     values: Dict[str, float]
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def get_value(self, key: str, default: Optional[float] = None) -> Optional[float]:
         """Safely fetch metric value from result dictionary."""
@@ -591,7 +565,7 @@ class TechnicalIndicatorResult(BaseModel):
 class RiskMetrics(BaseModel):
     """Quantitative portfolio and market telemetry risk analytics."""
 
-    symbol: str
+    symbol: Symbol
     realized_volatility: float = Field(..., ge=0.0)
     sharpe_ratio: Optional[float] = None
     max_drawdown: float = Field(..., le=0.0)
@@ -600,11 +574,6 @@ class RiskMetrics(BaseModel):
     sample_size: int = Field(..., ge=0)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert risk metrics to dictionary."""
@@ -624,7 +593,7 @@ class RiskMetrics(BaseModel):
 class MarketTelemetrySummary(BaseModel):
     """Comprehensive single-asset market telemetry state summary."""
 
-    symbol: str
+    symbol: Symbol
     last_price: float = Field(..., gt=0.0)
     last_size: float = Field(..., ge=0.0)
     last_side: Side
@@ -636,11 +605,6 @@ class MarketTelemetrySummary(BaseModel):
     change_24h_pct: Optional[float] = None
     market_state: MarketState = Field(default=MarketState.OPEN)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert summary to dictionary."""
@@ -664,7 +628,7 @@ class TradeExecution(BaseModel):
     """Simulated trade execution match record."""
 
     trade_id: str
-    symbol: str
+    symbol: Symbol
     price: float = Field(..., gt=0.0)
     size: float = Field(..., gt=0.0)
     side: Side
@@ -673,11 +637,6 @@ class TradeExecution(BaseModel):
     maker_order_id: Optional[str] = None
     taker_order_id: Optional[str] = None
     fee: float = Field(default=0.0, ge=0.0)
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @property
     def notional(self) -> float:

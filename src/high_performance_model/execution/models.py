@@ -7,9 +7,9 @@ from enum import Enum
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from high_performance_model.types import OrderType, Side, TimeInForce, validate_symbol
+from high_performance_model.types import OrderType, Side, Symbol, TimeInForce, validate_symbol
 
 
 class OrderStatus(str, Enum):
@@ -26,7 +26,7 @@ class SimulatedOrder(BaseModel):
     """Simulated trading order data contract."""
 
     order_id: str = Field(default_factory=lambda: f"ord_{uuid4().hex[:8]}")
-    symbol: str
+    symbol: Symbol
     side: Side
     order_type: OrderType = OrderType.MARKET
     quantity: float = Field(..., gt=0.0)
@@ -39,11 +39,6 @@ class SimulatedOrder(BaseModel):
     fee_paid: float = Field(default=0.0, ge=0.0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @property
     def remaining_quantity(self) -> float:
@@ -79,16 +74,11 @@ class SimulatedOrder(BaseModel):
 class Position(BaseModel):
     """Real-time position tracking for a single asset."""
 
-    symbol: str
+    symbol: Symbol
     quantity: float = 0.0
     average_entry_price: float = 0.0
     realized_pnl: float = 0.0
     current_price: float = 0.0
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     @property
     def unrealized_pnl(self) -> float:

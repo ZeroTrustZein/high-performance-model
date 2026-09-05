@@ -6,6 +6,7 @@ import math
 from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 def simple_moving_average(data: Union[np.ndarray, list[float]], period: int = 20) -> np.ndarray:
@@ -108,9 +109,8 @@ def bollinger_bands(
 
     sma = simple_moving_average(arr, period=period)
     rolling_std = np.full(n, np.nan)
-
-    for i in range(period - 1, n):
-        rolling_std[i] = np.std(arr[i - period + 1 : i + 1])
+    windows = sliding_window_view(arr, period)
+    rolling_std[period - 1 :] = np.std(windows, axis=-1)
 
     upper = sma + (rolling_std * num_std)
     lower = sma - (rolling_std * num_std)
@@ -208,30 +208,31 @@ def stochastic_oscillator(
         return k_line, d_line
 
     raw_k = np.full(n, np.nan, dtype=np.float64)
-    for i in range(k_period - 1, n):
-        lowest_low = np.min(l_arr[i - k_period + 1 : i + 1])
-        highest_high = np.max(h_arr[i - k_period + 1 : i + 1])
-        rng = highest_high - lowest_low
-        if rng > 0:
-            raw_k[i] = ((c_arr[i] - lowest_low) / rng) * 100.0
-        else:
-            raw_k[i] = 50.0
+    low_wins = sliding_window_view(l_arr, k_period)
+    high_wins = sliding_window_view(h_arr, k_period)
+    lowest_low = np.min(low_wins, axis=-1)
+    highest_high = np.max(high_wins, axis=-1)
+    rng = highest_high - lowest_low
+    c_slice = c_arr[k_period - 1 :]
+    valid_rng = rng > 0
+    k_vals = np.full_like(rng, 50.0)
+    np.divide((c_slice - lowest_low) * 100.0, rng, out=k_vals, where=valid_rng)
+    raw_k[k_period - 1 :] = k_vals
 
-    if smooth_k > 1:
-        # Smooth %K
-        for i in range(k_period + smooth_k - 2, n):
-            window = raw_k[i - smooth_k + 1 : i + 1]
-            if not np.any(np.isnan(window)):
-                k_line[i] = np.mean(window)
+    if smooth_k > 1 and n >= k_period + smooth_k - 1:
+        valid_raw = raw_k[k_period - 1 :]
+        k_line[k_period + smooth_k - 2 :] = np.mean(
+            sliding_window_view(valid_raw, smooth_k), axis=-1
+        )
     else:
         k_line = raw_k
 
-    # Calculate %D as SMA of %K
-    for i in range(n):
-        if i >= d_period - 1:
-            window = k_line[i - d_period + 1 : i + 1]
-            if not np.any(np.isnan(window)):
-                d_line[i] = np.mean(window)
+    if n >= k_period + smooth_k - 2 + d_period:
+        k_valid_start = k_period + smooth_k - 2 if smooth_k > 1 else k_period - 1
+        k_valid = k_line[k_valid_start:]
+        d_line[k_valid_start + d_period - 1 :] = np.mean(
+            sliding_window_view(k_valid, d_period), axis=-1
+        )
 
     return k_line, d_line
 
@@ -245,13 +246,14 @@ def rolling_z_score(data: Union[np.ndarray, list[float]], period: int = 20) -> n
         return z
 
     sma = simple_moving_average(arr, period=period)
-    for i in range(period - 1, n):
-        window = arr[i - period + 1 : i + 1]
-        std = np.std(window)
-        if std > 1e-12:
-            z[i] = (arr[i] - sma[i]) / std
-        else:
-            z[i] = 0.0
+    windows = sliding_window_view(arr, period)
+    stds = np.std(windows, axis=-1)
+    valid_mask = stds > 1e-12
+    curr_arr = arr[period - 1 :]
+    curr_sma = sma[period - 1 :]
+    z_valid = np.zeros_like(stds)
+    np.divide(curr_arr - curr_sma, stds, out=z_valid, where=valid_mask)
+    z[period - 1 :] = z_valid
     return z
 
 

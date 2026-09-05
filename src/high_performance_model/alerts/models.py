@@ -7,9 +7,9 @@ from enum import Enum
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from high_performance_model.types import validate_symbol
+from high_performance_model.types import Symbol
 
 
 class AlertType(str, Enum):
@@ -26,7 +26,7 @@ class AlertRule(BaseModel):
     """Definition of a threshold-based market alert."""
 
     alert_id: str = Field(default_factory=lambda: f"alt_{uuid4().hex[:8]}")
-    symbol: str
+    symbol: Symbol
     alert_type: AlertType
     threshold: float
     triggered: bool = False
@@ -35,11 +35,6 @@ class AlertRule(BaseModel):
     one_shot: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     message: Optional[str] = None
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert alert rule to dictionary."""
@@ -62,17 +57,12 @@ class AlertEvent(BaseModel):
 
     event_id: str = Field(default_factory=lambda: f"evt_{uuid4().hex[:8]}")
     alert_id: str
-    symbol: str
+    symbol: Symbol
     alert_type: AlertType
     threshold: float
     current_value: float
     message: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def _clean_symbol(cls, v: Any) -> str:
-        return validate_symbol(v)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert alert event to dictionary."""

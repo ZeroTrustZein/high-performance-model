@@ -30,45 +30,6 @@ from high_performance_model.types import (
 )
 
 
-def aggregate_bars_from_ticks(
-    ticks: List[MarketTick],
-    timeframe: Union[BarTimeframe, str] = BarTimeframe.MIN_1,
-) -> List[Bar]:
-    """Aggregate a sequence of market ticks into discrete OHLCV candle bars."""
-    if not ticks:
-        return []
-
-    tf = BarTimeframe(timeframe) if isinstance(timeframe, str) else timeframe
-    interval_seconds = timeframe_to_seconds(tf)
-    symbol = ticks[0].symbol
-
-    # Group ticks by interval window
-    bars: List[Bar] = []
-    current_bucket: Optional[int] = None
-    bucket_ticks: List[MarketTick] = []
-
-    for tick in ticks:
-        tick_ts = tick.timestamp.timestamp()
-        bucket = int(tick_ts // interval_seconds) * interval_seconds
-
-        if current_bucket is None:
-            current_bucket = bucket
-
-        if bucket != current_bucket:
-            # Finalize previous bar
-            if bucket_ticks:
-                bars.append(_build_bar_from_bucket(symbol, bucket_ticks, current_bucket, tf))
-            current_bucket = bucket
-            bucket_ticks = [tick]
-        else:
-            bucket_ticks.append(tick)
-
-    if bucket_ticks and current_bucket is not None:
-        bars.append(_build_bar_from_bucket(symbol, bucket_ticks, current_bucket, tf))
-
-    return bars
-
-
 def _build_bar_from_bucket(
     symbol: str,
     ticks: List[MarketTick],
@@ -152,6 +113,25 @@ class BarAggregator:
         self._bucket_ticks.clear()
         self._current_bucket = None
         return bar
+
+
+def aggregate_bars_from_ticks(
+    ticks: List[MarketTick],
+    timeframe: Union[BarTimeframe, str] = BarTimeframe.MIN_1,
+) -> List[Bar]:
+    """Aggregate a sequence of market ticks into discrete OHLCV candle bars."""
+    if not ticks:
+        return []
+    aggregator = BarAggregator(ticks[0].symbol, timeframe)
+    bars: List[Bar] = []
+    for tick in ticks:
+        bar = aggregator.update(tick)
+        if bar is not None:
+            bars.append(bar)
+    last_bar = aggregator.flush()
+    if last_bar is not None:
+        bars.append(last_bar)
+    return bars
 
 
 class MarketDataBuffer:
