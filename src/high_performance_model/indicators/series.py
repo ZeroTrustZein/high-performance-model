@@ -183,7 +183,7 @@ def rate_of_change(data: Union[np.ndarray, list[float]], period: int = 10) -> np
         return res
     prev = arr[:-period]
     diff = arr[period:] - prev
-    res[period:] = np.where(prev != 0.0, (diff / prev) * 100.0, 0.0)
+    res[period:] = np.divide(diff, prev, out=np.zeros_like(diff), where=(prev != 0.0)) * 100.0
     return res
 
 

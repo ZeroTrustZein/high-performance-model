@@ -1,7 +1,32 @@
 """High-performance Model Context Protocol (MCP) server for FinTech market telemetry."""
 
+from high_performance_model.alerts import (
+    AlertEngine,
+    AlertEvent,
+    AlertRule,
+    AlertType,
+)
+from high_performance_model.execution import (
+    ExecutionSimulator,
+    OrderStatus,
+    Portfolio,
+    Position,
+    SimulatedOrder,
+)
 from high_performance_model.protocol.server import MCPServer
+from high_performance_model.protocol.transports import (
+    MemoryTransport,
+    SSEServer,
+    SSETransport,
+    StdioTransport,
+)
 from high_performance_model.server.app import create_fintech_mcp_server
+from high_performance_model.storage import (
+    HistoricalReplayEngine,
+    MarketDataPersistence,
+    load_buffer_snapshot,
+    save_buffer_snapshot,
+)
 from high_performance_model.telemetry.benchmark import run_telemetry_benchmark
 from high_performance_model.telemetry.buffer import (
     BarAggregator,
@@ -37,26 +62,41 @@ from high_performance_model.types import (
 
 __version__ = "0.1.0"
 __all__ = [
+    "AlertEngine",
+    "AlertEvent",
+    "AlertRule",
+    "AlertType",
     "AssetClass",
     "Bar",
     "BarAggregator",
     "BarTimeframe",
     "BenchmarkRunResult",
+    "ExecutionSimulator",
+    "HistoricalReplayEngine",
     "IndicatorConfig",
     "IndicatorType",
     "LiquidityTier",
     "MCPServer",
     "MarketDataBuffer",
+    "MarketDataPersistence",
     "MarketDepthSnapshot",
     "MarketState",
     "MarketTelemetrySummary",
     "MarketTick",
+    "MemoryTransport",
     "OrderBook",
     "OrderBookLevel",
+    "OrderStatus",
     "OrderType",
+    "Portfolio",
+    "Position",
     "Quote",
     "RiskMetrics",
+    "SSEServer",
+    "SSETransport",
     "Side",
+    "SimulatedOrder",
+    "StdioTransport",
     "TechnicalIndicatorResult",
     "TimeInForce",
     "TradeExecution",
@@ -64,7 +104,9 @@ __all__ = [
     "compute_microprice",
     "compute_spread_bps",
     "create_fintech_mcp_server",
+    "load_buffer_snapshot",
     "run_telemetry_benchmark",
+    "save_buffer_snapshot",
     "timeframe_to_seconds",
     "validate_symbol",
 ]

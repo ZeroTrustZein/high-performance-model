@@ -3,8 +3,8 @@
 from high_performance_model.indicators.series import (
     average_true_range,
     bollinger_bands,
-    exponential_moving_average,
     expected_shortfall,
+    exponential_moving_average,
     macd,
     max_drawdown,
     momentum,

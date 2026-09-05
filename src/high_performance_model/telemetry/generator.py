@@ -53,12 +53,12 @@ class SyntheticMarketFeed:
     def get_asset_class(self, symbol: str) -> AssetClass:
         """Infer asset class from ticker symbol."""
         sym = symbol.upper()
+        if sym in {"XAU/USD", "WTI/USD", "BRENT"}:
+            return AssetClass.COMMODITY
         if "/" in sym or sym.endswith("USDT") or "BTC" in sym or "ETH" in sym:
             if "USD" in sym and any(c in sym for c in ["EUR", "GBP", "JPY", "CHF", "AUD"]):
                 return AssetClass.FX
             return AssetClass.CRYPTO
-        if sym in {"XAU/USD", "WTI/USD", "BRENT"}:
-            return AssetClass.COMMODITY
         return AssetClass.EQUITY
 
     def _get_volatility_and_jump_params(self, symbol: str) -> tuple[float, float, float]:

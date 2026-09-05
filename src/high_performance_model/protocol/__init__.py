@@ -15,7 +15,13 @@ from high_performance_model.protocol.models import (
     Tool,
 )
 from high_performance_model.protocol.server import MCPServer
-from high_performance_model.protocol.transports import StdioTransport, Transport
+from high_performance_model.protocol.transports import (
+    MemoryTransport,
+    SSEServer,
+    SSETransport,
+    StdioTransport,
+    Transport,
+)
 
 __all__ = [
     "CallToolRequest",
@@ -25,10 +31,13 @@ __all__ = [
     "ListResourcesResult",
     "ListToolsResult",
     "MCPServer",
+    "MemoryTransport",
     "Prompt",
     "ReadResourceResult",
     "Resource",
     "ServerCapabilities",
+    "SSEServer",
+    "SSETransport",
     "StdioTransport",
     "TextContent",
     "Tool",

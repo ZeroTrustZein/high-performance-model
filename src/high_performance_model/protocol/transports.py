@@ -101,3 +101,8 @@ class StdioTransport(Transport):
 
     async def close(self) -> None:
         self._closed = True
+
+
+from high_performance_model.protocol.sse import SSEServer, SSETransport  # noqa: E402
+
+__all__ = ["Transport", "MemoryTransport", "StdioTransport", "SSETransport", "SSEServer"]

@@ -517,6 +517,7 @@ class MarketDepthSnapshot(BaseModel):
     spread: Optional[float] = None
     mid_price: Optional[float] = None
     imbalance: float = 0.0
+    sequence: Optional[int] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("symbol", mode="before")
@@ -533,6 +534,7 @@ class MarketDepthSnapshot(BaseModel):
             "spread": self.spread,
             "mid_price": self.mid_price,
             "imbalance": self.imbalance,
+            "sequence": self.sequence,
             "timestamp": self.timestamp.isoformat(),
         }
 

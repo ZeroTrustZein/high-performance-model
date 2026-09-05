@@ -85,6 +85,7 @@ def test_synthetic_feed(synthetic_feed: SyntheticMarketFeed):
     ob = synthetic_feed.generate_order_book("AAPL", depth=5)
     assert len(ob.bids) == 5
     assert len(ob.asks) == 5
+    assert ob.best_ask is not None and ob.best_bid is not None
     assert ob.best_ask > ob.best_bid
 
     bars = synthetic_feed.generate_bars("AAPL", n_bars=10)
@@ -141,6 +142,7 @@ def test_jsonrpc_encoding():
     assert '"result": {"status": "ok"}' in serialized
 
     err_resp = make_error_response(2, -32600, "Invalid Request")
+    assert err_resp.error is not None
     assert err_resp.error.code == -32600
 
 
@@ -154,12 +156,15 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
             params={"clientInfo": {"name": "test-client", "version": "1.0.0"}},
         )
         init_resp = await mcp_server.handle_request(init_req)
+        assert init_resp is not None
         assert init_resp.id == 1
+        assert init_resp.result is not None
         assert "protocolVersion" in init_resp.result
 
         # 2. List tools
         tools_req = JsonRpcRequest(id=2, method="tools/list")
         tools_resp = await mcp_server.handle_request(tools_req)
+        assert tools_resp is not None and tools_resp.result is not None
         tool_names = [t["name"] for t in tools_resp.result["tools"]]
         assert "get_market_quote" in tool_names
         assert "get_order_book_depth" in tool_names
@@ -172,6 +177,7 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
             params={"name": "get_market_quote", "arguments": {"symbol": "AAPL"}},
         )
         call_resp = await mcp_server.handle_request(call_req)
+        assert call_resp is not None and call_resp.result is not None
         assert call_resp.id == 3
         result_data = json.loads(call_resp.result["content"][0]["text"])
         assert result_data["symbol"] == "AAPL"
@@ -180,6 +186,7 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
         # 4. Resources list and read
         res_list_req = JsonRpcRequest(id=4, method="resources/list")
         res_list_resp = await mcp_server.handle_request(res_list_req)
+        assert res_list_resp is not None and res_list_resp.result is not None
         assert len(res_list_resp.result["resources"]) >= 2
 
         res_read_req = JsonRpcRequest(
@@ -188,12 +195,14 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
             params={"uri": "indicators://catalog"},
         )
         res_read_resp = await mcp_server.handle_request(res_read_req)
+        assert res_read_resp is not None and res_read_resp.result is not None
         catalog = json.loads(res_read_resp.result["contents"][0]["text"])
         assert "indicators" in catalog
 
         # 5. Prompts list and get
         prompt_list_req = JsonRpcRequest(id=6, method="prompts/list")
         prompt_list_resp = await mcp_server.handle_request(prompt_list_req)
+        assert prompt_list_resp is not None and prompt_list_resp.result is not None
         assert len(prompt_list_resp.result["prompts"]) >= 1
 
         prompt_get_req = JsonRpcRequest(
@@ -202,6 +211,7 @@ def test_mcp_server_protocol_lifecycle(mcp_server: MCPServer):
             params={"name": "analyze_market_structure", "arguments": {"symbol": "AAPL"}},
         )
         prompt_get_resp = await mcp_server.handle_request(prompt_get_req)
+        assert prompt_get_resp is not None and prompt_get_resp.result is not None
         assert len(prompt_get_resp.result["messages"]) == 1
 
     asyncio.run(_test())

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import numpy as np
 import pytest
 
 from high_performance_model.telemetry.benchmark import run_telemetry_benchmark
@@ -137,6 +136,7 @@ class TestMarketDataBufferAnalytics:
 
         ob = feed.generate_order_book("MSFT", depth=5)
         buf.push_order_book(ob)
+        assert ob.mid_price is not None
 
         # Push buy tick
         tick_buy = MarketTick(symbol="MSFT", price=ob.mid_price + 0.05, size=20.0, side=Side.BUY)
@@ -203,14 +203,14 @@ class TestMarketDataBufferAnalytics:
         risk = buf.compute_risk_metrics("BTC/USD")
         assert isinstance(risk, RiskMetrics)
         assert risk.symbol == "BTC/USD"
-        assert risk.realized_volatility > 0.0
+        assert risk.realized_volatility is not None and risk.realized_volatility > 0.0
         assert risk.max_drawdown <= 0.0
-        assert risk.value_at_risk_95 < 0.0
+        assert risk.value_at_risk_95 is not None and risk.value_at_risk_95 < 0.0
 
         summary = buf.compute_telemetry_summary("BTC/USD")
         assert isinstance(summary, MarketTelemetrySummary)
         assert summary.symbol == "BTC/USD"
-        assert summary.volume_24h > 0.0
+        assert summary.volume_24h is not None and summary.volume_24h > 0.0
         assert summary.market_state == MarketState.OPEN
 
 
