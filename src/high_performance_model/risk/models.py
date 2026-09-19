@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from high_performance_model.types import Symbol
+
 
 class RiskLevel(str, Enum):
     """Qualitative classification of portfolio/asset risk."""
@@ -22,7 +24,7 @@ class RiskLevel(str, Enum):
 class RiskRatioResult(BaseModel):
     """Calculated risk-adjusted performance ratios."""
 
-    symbol: str
+    symbol: Symbol
     sharpe_ratio: float
     sortino_ratio: float
     calmar_ratio: Optional[float] = None
@@ -68,10 +70,10 @@ class MonteCarloConfig(BaseModel):
 class MonteCarloStressResult(BaseModel):
     """Aggregated output from Monte Carlo price and return trajectory simulations."""
 
-    symbol: str
+    symbol: Symbol
     initial_price: float = Field(..., gt=0.0)
-    horizon_days: int
-    n_simulations: int
+    horizon_days: int = Field(..., ge=1)
+    n_simulations: int = Field(..., ge=1)
     expected_final_price: float
     median_final_price: float
     worst_case_drawdown: float = Field(..., le=0.0)
@@ -113,12 +115,12 @@ class StressScenario(BaseModel):
 class StressTestResult(BaseModel):
     """Outcome of applying a stress scenario to a position or market series."""
 
-    symbol: str
+    symbol: Symbol
     scenario_name: str
-    initial_price: float
-    stressed_price: float
+    initial_price: float = Field(..., gt=0.0)
+    stressed_price: float = Field(..., gt=0.0)
     pnl_shock_pct: float
-    stressed_volatility: float
+    stressed_volatility: float = Field(..., ge=0.0)
     stressed_var_95: float
     risk_level: RiskLevel
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -141,7 +143,7 @@ class StressTestResult(BaseModel):
 class RiskTelemetrySnapshot(BaseModel):
     """Streaming risk telemetry point emitted by the risk engine."""
 
-    symbol: str
+    symbol: Symbol
     ratios: RiskRatioResult
     monte_carlo_var_95: Optional[float] = None
     stress_impacts: List[StressTestResult] = Field(default_factory=list)
