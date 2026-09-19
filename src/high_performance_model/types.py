@@ -5,9 +5,20 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
+
+if TYPE_CHECKING:
+    from high_performance_model.risk.models import (
+        MonteCarloConfig,
+        MonteCarloStressResult,
+        RiskLevel,
+        RiskRatioResult,
+        RiskTelemetrySnapshot,
+        StressScenario,
+        StressTestResult,
+    )
 
 
 class Side(str, Enum):
@@ -688,16 +699,22 @@ class BenchmarkRunResult(BaseModel):
         }
 
 
-# Re-export risk models for unified type access
-from high_performance_model.risk.models import (
-    MonteCarloConfig,
-    MonteCarloStressResult,
-    RiskLevel,
-    RiskRatioResult,
-    RiskTelemetrySnapshot,
-    StressScenario,
-    StressTestResult,
-)
+def __getattr__(name: str) -> Any:
+    """Dynamically resolve risk domain types on demand to avoid circular import."""
+    if name in {
+        "RiskLevel",
+        "RiskRatioResult",
+        "MonteCarloConfig",
+        "MonteCarloStressResult",
+        "StressScenario",
+        "StressTestResult",
+        "RiskTelemetrySnapshot",
+    }:
+        import high_performance_model.risk.models as _risk_models
+
+        return getattr(_risk_models, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "AssetClass",
