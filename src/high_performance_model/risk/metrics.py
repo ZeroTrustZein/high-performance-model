@@ -145,8 +145,12 @@ def compute_comprehensive_risk_ratios(
             sample_size=n,
         )
 
-    sharpe = calculate_sharpe_ratio(arr, risk_free_rate=risk_free_rate, periods_per_year=periods_per_year)
-    sortino = calculate_sortino_ratio(arr, risk_free_rate=risk_free_rate, periods_per_year=periods_per_year)
+    sharpe = calculate_sharpe_ratio(
+        arr, risk_free_rate=risk_free_rate, periods_per_year=periods_per_year
+    )
+    sortino = calculate_sortino_ratio(
+        arr, risk_free_rate=risk_free_rate, periods_per_year=periods_per_year
+    )
     downside_dev = calculate_downside_deviation(arr, target_return=0.0)
     ann_ret = float(round(float(np.mean(arr) * periods_per_year), 6))
     ann_vol = float(round(float(np.std(arr, ddof=1) * math.sqrt(periods_per_year)), 6))
@@ -159,7 +163,9 @@ def compute_comprehensive_risk_ratios(
             peak = np.maximum.accumulate(p_arr)
             dds = (p_arr - peak) / np.where(peak > 0, peak, 1.0)
             mdd = abs(float(np.min(dds)))
-            calmar = calculate_calmar_ratio(arr, max_drawdown_pct=mdd, periods_per_year=periods_per_year)
+            calmar = calculate_calmar_ratio(
+                arr, max_drawdown_pct=mdd, periods_per_year=periods_per_year
+            )
 
     return RiskRatioResult(
         symbol=symbol,

@@ -96,7 +96,9 @@ class MonteCarloStressResult(BaseModel):
             "probability_of_loss": self.probability_of_loss,
             "var_by_confidence": dict(self.var_by_confidence),
             "cvar_by_confidence": dict(self.cvar_by_confidence),
-            "percentile_trajectories": {k: list(v) for k, v in self.percentile_trajectories.items()},
+            "percentile_trajectories": {
+                k: list(v) for k, v in self.percentile_trajectories.items()
+            },
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -106,7 +108,9 @@ class StressScenario(BaseModel):
 
     name: str
     description: str
-    price_shock_pct: float = Field(..., description="Instantaneous price shock percentage (-0.20 = -20%)")
+    price_shock_pct: float = Field(
+        ..., description="Instantaneous price shock percentage (-0.20 = -20%)"
+    )
     volatility_multiplier: float = Field(default=1.5, gt=0.0)
     liquidity_haircut_pct: float = Field(default=0.0, ge=0.0, le=1.0)
     correlation_spike: float = Field(default=0.2, ge=0.0, le=1.0)

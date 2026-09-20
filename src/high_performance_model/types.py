@@ -750,4 +750,3 @@ __all__ = [
     "timeframe_to_seconds",
     "validate_symbol",
 ]
-
