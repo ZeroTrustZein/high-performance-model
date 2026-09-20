@@ -19,12 +19,19 @@ from high_performance_model.types import (
     MarketState,
     MarketTelemetrySummary,
     MarketTick,
+    MonteCarloConfig,
+    MonteCarloStressResult,
     OrderBook,
     OrderBookLevel,
     OrderType,
     Quote,
+    RiskLevel,
     RiskMetrics,
+    RiskRatioResult,
+    RiskTelemetrySnapshot,
     Side,
+    StressScenario,
+    StressTestResult,
     TechnicalIndicatorResult,
     TimeInForce,
     TradeExecution,
@@ -110,6 +117,21 @@ class TestEnums:
         assert LiquidityTier.TIER_4 == "tier_4"
         assert LiquidityTier.ILLIQUID == "illiquid"
         assert issubclass(LiquidityTier, str)
+
+    def test_risk_level_enum(self) -> None:
+        assert RiskLevel.LOW == "low"
+        assert RiskLevel.MODERATE == "moderate"
+        assert RiskLevel.ELEVATED == "elevated"
+        assert RiskLevel.HIGH == "high"
+        assert RiskLevel.CRITICAL == "critical"
+        assert issubclass(RiskLevel, str)
+        assert set(RiskLevel) == {
+            RiskLevel.LOW,
+            RiskLevel.MODERATE,
+            RiskLevel.ELEVATED,
+            RiskLevel.HIGH,
+            RiskLevel.CRITICAL,
+        }
 
 
 class TestHelperFunctions:
@@ -550,6 +572,7 @@ class TestRiskMetrics:
             symbol="eth/usd",
             realized_volatility=0.65,
             sharpe_ratio=1.45,
+            sortino_ratio=1.85,
             max_drawdown=-0.18,
             value_at_risk_95=-0.045,
             expected_shortfall_95=-0.062,
@@ -558,10 +581,14 @@ class TestRiskMetrics:
         )
         assert metrics.symbol == "ETH/USD"
         assert metrics.realized_volatility == 0.65
+        assert metrics.sharpe_ratio == 1.45
+        assert metrics.sortino_ratio == 1.85
         assert metrics.max_drawdown == -0.18
 
         d = metrics.to_dict()
         assert d["symbol"] == "ETH/USD"
+        assert d["sharpe_ratio"] == 1.45
+        assert d["sortino_ratio"] == 1.85
         assert d["max_drawdown"] == -0.18
         assert d["sample_size"] == 500
 
@@ -705,6 +732,361 @@ class TestBenchmarkRunResult:
             )
 
 
+class TestRiskRatioResult:
+    """Test RiskRatioResult domain model and calculations contract."""
+
+    def test_valid_risk_ratio_result(self) -> None:
+        res = RiskRatioResult(
+            symbol="aapl",
+            sharpe_ratio=1.85,
+            sortino_ratio=2.45,
+            calmar_ratio=1.20,
+            omega_ratio=1.65,
+            downside_deviation=0.012,
+            annualized_return=0.22,
+            annualized_volatility=0.15,
+            risk_free_rate=0.045,
+            sample_size=252,
+        )
+        assert res.symbol == "AAPL"
+        assert res.sharpe_ratio == 1.85
+        assert res.sortino_ratio == 2.45
+        assert res.calmar_ratio == 1.20
+        assert res.omega_ratio == 1.65
+        assert res.downside_deviation == 0.012
+        assert res.sample_size == 252
+
+        d = res.to_dict()
+        assert d["symbol"] == "AAPL"
+        assert d["sharpe_ratio"] == 1.85
+        assert d["sortino_ratio"] == 2.45
+        assert d["calmar_ratio"] == 1.20
+        assert "timestamp" in d
+
+    def test_risk_ratio_result_validation_errors(self) -> None:
+        # Negative downside deviation
+        with pytest.raises(ValidationError):
+            RiskRatioResult(
+                symbol="AAPL",
+                sharpe_ratio=1.0,
+                sortino_ratio=1.0,
+                downside_deviation=-0.01,
+                annualized_return=0.1,
+                annualized_volatility=0.1,
+                risk_free_rate=0.04,
+                sample_size=100,
+            )
+
+        # Negative annualized volatility
+        with pytest.raises(ValidationError):
+            RiskRatioResult(
+                symbol="AAPL",
+                sharpe_ratio=1.0,
+                sortino_ratio=1.0,
+                downside_deviation=0.01,
+                annualized_return=0.1,
+                annualized_volatility=-0.1,
+                risk_free_rate=0.04,
+                sample_size=100,
+            )
+
+        # Negative sample size
+        with pytest.raises(ValidationError):
+            RiskRatioResult(
+                symbol="AAPL",
+                sharpe_ratio=1.0,
+                sortino_ratio=1.0,
+                downside_deviation=0.01,
+                annualized_return=0.1,
+                annualized_volatility=0.1,
+                risk_free_rate=0.04,
+                sample_size=-5,
+            )
+
+        # Invalid symbol
+        with pytest.raises(ValidationError):
+            RiskRatioResult(
+                symbol="INVALID$$$",
+                sharpe_ratio=1.0,
+                sortino_ratio=1.0,
+                downside_deviation=0.01,
+                annualized_return=0.1,
+                annualized_volatility=0.1,
+                risk_free_rate=0.04,
+                sample_size=100,
+            )
+
+
+class TestMonteCarloConfig:
+    """Test MonteCarloConfig parameter model and validation."""
+
+    def test_monte_carlo_config_defaults(self) -> None:
+        cfg = MonteCarloConfig()
+        assert cfg.n_simulations == 5000
+        assert cfg.horizon_days == 30
+        assert cfg.time_steps_per_day == 1
+        assert cfg.confidence_levels == [0.90, 0.95, 0.99]
+        assert cfg.random_seed is None
+        assert cfg.jump_diffusion is False
+        assert cfg.jump_intensity == 0.1
+        assert cfg.jump_mean == 0.0
+        assert cfg.jump_std == 0.05
+
+    def test_monte_carlo_config_custom(self) -> None:
+        cfg = MonteCarloConfig(
+            n_simulations=10000,
+            horizon_days=60,
+            time_steps_per_day=4,
+            confidence_levels=[0.95, 0.99],
+            random_seed=42,
+            jump_diffusion=True,
+            jump_intensity=0.2,
+            jump_mean=-0.02,
+            jump_std=0.08,
+        )
+        assert cfg.n_simulations == 10000
+        assert cfg.horizon_days == 60
+        assert cfg.jump_diffusion is True
+        assert cfg.random_seed == 42
+
+    def test_monte_carlo_config_validation_errors(self) -> None:
+        # Simulations too low (< 10)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(n_simulations=5)
+
+        # Simulations too high (> 100000)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(n_simulations=200000)
+
+        # Horizon days out of bounds (< 1 or > 365)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(horizon_days=0)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(horizon_days=500)
+
+        # Time steps out of bounds (< 1 or > 24)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(time_steps_per_day=0)
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(time_steps_per_day=30)
+
+        # Negative jump intensity
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(jump_intensity=-0.1)
+
+        # Negative jump std
+        with pytest.raises(ValidationError):
+            MonteCarloConfig(jump_std=-0.05)
+
+
+class TestMonteCarloStressResult:
+    """Test MonteCarloStressResult simulation output contract."""
+
+    def test_valid_monte_carlo_stress_result(self) -> None:
+        result = MonteCarloStressResult(
+            symbol="btc/usd",
+            initial_price=65000.0,
+            horizon_days=30,
+            n_simulations=5000,
+            expected_final_price=67500.0,
+            median_final_price=66800.0,
+            worst_case_drawdown=-0.285,
+            probability_of_loss=0.38,
+            var_by_confidence={"90%": -0.08, "95%": -0.12, "99%": -0.19},
+            cvar_by_confidence={"90%": -0.13, "95%": -0.16, "99%": -0.23},
+            percentile_trajectories={"p50": [65000.0, 66000.0, 66800.0]},
+        )
+        assert result.symbol == "BTC/USD"
+        assert result.initial_price == 65000.0
+        assert result.horizon_days == 30
+        assert result.n_simulations == 5000
+        assert result.worst_case_drawdown == -0.285
+        assert result.probability_of_loss == 0.38
+        assert "95%" in result.var_by_confidence
+
+        d = result.to_dict()
+        assert d["symbol"] == "BTC/USD"
+        assert d["initial_price"] == 65000.0
+        assert d["expected_final_price"] == 67500.0
+        assert d["probability_of_loss"] == 0.38
+        assert d["var_by_confidence"]["95%"] == -0.12
+
+    def test_monte_carlo_stress_result_validation_errors(self) -> None:
+        # Non-positive initial price
+        with pytest.raises(ValidationError):
+            MonteCarloStressResult(
+                symbol="BTC/USD",
+                initial_price=0.0,
+                horizon_days=30,
+                n_simulations=1000,
+                expected_final_price=100.0,
+                median_final_price=100.0,
+                worst_case_drawdown=-0.1,
+                probability_of_loss=0.2,
+            )
+
+        # Drawdown must be <= 0
+        with pytest.raises(ValidationError):
+            MonteCarloStressResult(
+                symbol="BTC/USD",
+                initial_price=100.0,
+                horizon_days=30,
+                n_simulations=1000,
+                expected_final_price=100.0,
+                median_final_price=100.0,
+                worst_case_drawdown=0.05,
+                probability_of_loss=0.2,
+            )
+
+        # Probability of loss > 1.0 or < 0.0
+        with pytest.raises(ValidationError):
+            MonteCarloStressResult(
+                symbol="BTC/USD",
+                initial_price=100.0,
+                horizon_days=30,
+                n_simulations=1000,
+                expected_final_price=100.0,
+                median_final_price=100.0,
+                worst_case_drawdown=-0.1,
+                probability_of_loss=1.5,
+            )
+
+
+class TestStressScenario:
+    """Test StressScenario definition model."""
+
+    def test_stress_scenario_valid(self) -> None:
+        sc = StressScenario(
+            name="2008 Crisis",
+            description="Subprime meltdown",
+            price_shock_pct=-0.35,
+            volatility_multiplier=2.5,
+            liquidity_haircut_pct=0.3,
+            correlation_spike=0.5,
+        )
+        assert sc.name == "2008 Crisis"
+        assert sc.price_shock_pct == -0.35
+        assert sc.volatility_multiplier == 2.5
+        assert sc.liquidity_haircut_pct == 0.3
+        assert sc.correlation_spike == 0.5
+
+    def test_stress_scenario_validation_errors(self) -> None:
+        # Non-positive volatility multiplier
+        with pytest.raises(ValidationError):
+            StressScenario(
+                name="Test",
+                description="Test",
+                price_shock_pct=-0.1,
+                volatility_multiplier=0.0,
+            )
+
+        # Liquidity haircut out of [0, 1]
+        with pytest.raises(ValidationError):
+            StressScenario(
+                name="Test",
+                description="Test",
+                price_shock_pct=-0.1,
+                liquidity_haircut_pct=1.5,
+            )
+
+
+class TestStressTestResult:
+    """Test StressTestResult evaluation output."""
+
+    def test_stress_test_result_valid(self) -> None:
+        res = StressTestResult(
+            symbol="nvda",
+            scenario_name="Tech Flash Crash",
+            initial_price=120.0,
+            stressed_price=105.6,
+            pnl_shock_pct=-0.12,
+            stressed_volatility=0.45,
+            stressed_var_95=-0.0465,
+            risk_level=RiskLevel.ELEVATED,
+        )
+        assert res.symbol == "NVDA"
+        assert res.scenario_name == "Tech Flash Crash"
+        assert res.initial_price == 120.0
+        assert res.stressed_price == 105.6
+        assert res.risk_level == RiskLevel.ELEVATED
+
+        d = res.to_dict()
+        assert d["symbol"] == "NVDA"
+        assert d["risk_level"] == "elevated"
+        assert d["stressed_price"] == 105.6
+
+    def test_stress_test_result_validation_errors(self) -> None:
+        # Non-positive initial price
+        with pytest.raises(ValidationError):
+            StressTestResult(
+                symbol="NVDA",
+                scenario_name="Crash",
+                initial_price=0.0,
+                stressed_price=80.0,
+                pnl_shock_pct=-0.2,
+                stressed_volatility=0.5,
+                stressed_var_95=-0.05,
+                risk_level=RiskLevel.HIGH,
+            )
+
+        # Non-positive stressed price
+        with pytest.raises(ValidationError):
+            StressTestResult(
+                symbol="NVDA",
+                scenario_name="Crash",
+                initial_price=100.0,
+                stressed_price=-10.0,
+                pnl_shock_pct=-0.2,
+                stressed_volatility=0.5,
+                stressed_var_95=-0.05,
+                risk_level=RiskLevel.HIGH,
+            )
+
+
+class TestRiskTelemetrySnapshot:
+    """Test RiskTelemetrySnapshot composite model."""
+
+    def test_risk_telemetry_snapshot_valid(self) -> None:
+        ratios = RiskRatioResult(
+            symbol="AAPL",
+            sharpe_ratio=1.65,
+            sortino_ratio=2.10,
+            downside_deviation=0.015,
+            annualized_return=0.18,
+            annualized_volatility=0.14,
+            risk_free_rate=0.045,
+            sample_size=150,
+        )
+        stress = StressTestResult(
+            symbol="AAPL",
+            scenario_name="Rate Shock",
+            initial_price=200.0,
+            stressed_price=180.0,
+            pnl_shock_pct=-0.10,
+            stressed_volatility=0.30,
+            stressed_var_95=-0.035,
+            risk_level=RiskLevel.MODERATE,
+        )
+        snap = RiskTelemetrySnapshot(
+            symbol="aapl",
+            ratios=ratios,
+            monte_carlo_var_95=-0.085,
+            stress_impacts=[stress],
+            risk_level=RiskLevel.MODERATE,
+        )
+        assert snap.symbol == "AAPL"
+        assert snap.monte_carlo_var_95 == -0.085
+        assert snap.risk_level == RiskLevel.MODERATE
+        assert len(snap.stress_impacts) == 1
+
+        d = snap.to_dict()
+        assert d["symbol"] == "AAPL"
+        assert d["risk_level"] == "moderate"
+        assert d["monte_carlo_var_95"] == -0.085
+        assert d["ratios"]["sharpe_ratio"] == 1.65
+        assert len(d["stress_impacts"]) == 1
+
+
 class TestSerializationRoundtrips:
     """Test JSON serialization and deserialization roundtrips across all domain types."""
 
@@ -738,3 +1120,86 @@ class TestSerializationRoundtrips:
         json_str = q.model_dump_json()
         loaded = Quote.model_validate_json(json_str)
         assert loaded.spread == 0.5
+
+    def test_risk_ratio_result_roundtrip(self) -> None:
+        r = RiskRatioResult(
+            symbol="MSFT",
+            sharpe_ratio=1.75,
+            sortino_ratio=2.30,
+            downside_deviation=0.011,
+            annualized_return=0.20,
+            annualized_volatility=0.13,
+            risk_free_rate=0.045,
+            sample_size=200,
+        )
+        json_str = r.model_dump_json()
+        loaded = RiskRatioResult.model_validate_json(json_str)
+        assert loaded.symbol == r.symbol
+        assert loaded.sharpe_ratio == r.sharpe_ratio
+        assert loaded.sortino_ratio == r.sortino_ratio
+
+    def test_monte_carlo_config_roundtrip(self) -> None:
+        cfg = MonteCarloConfig(n_simulations=2500, horizon_days=45, jump_diffusion=True)
+        json_str = cfg.model_dump_json()
+        loaded = MonteCarloConfig.model_validate_json(json_str)
+        assert loaded.n_simulations == 2500
+        assert loaded.horizon_days == 45
+        assert loaded.jump_diffusion is True
+
+    def test_monte_carlo_stress_result_roundtrip(self) -> None:
+        res = MonteCarloStressResult(
+            symbol="GOOGL",
+            initial_price=175.0,
+            horizon_days=30,
+            n_simulations=1000,
+            expected_final_price=180.0,
+            median_final_price=178.0,
+            worst_case_drawdown=-0.15,
+            probability_of_loss=0.35,
+            var_by_confidence={"95%": -0.09},
+        )
+        json_str = res.model_dump_json()
+        loaded = MonteCarloStressResult.model_validate_json(json_str)
+        assert loaded.symbol == "GOOGL"
+        assert loaded.worst_case_drawdown == -0.15
+
+    def test_stress_scenario_roundtrip(self) -> None:
+        sc = StressScenario(name="Shock", description="Desc", price_shock_pct=-0.2)
+        json_str = sc.model_dump_json()
+        loaded = StressScenario.model_validate_json(json_str)
+        assert loaded.name == "Shock"
+        assert loaded.price_shock_pct == -0.2
+
+    def test_stress_test_result_roundtrip(self) -> None:
+        res = StressTestResult(
+            symbol="TSLA",
+            scenario_name="Flash",
+            initial_price=220.0,
+            stressed_price=198.0,
+            pnl_shock_pct=-0.1,
+            stressed_volatility=0.6,
+            stressed_var_95=-0.06,
+            risk_level=RiskLevel.HIGH,
+        )
+        json_str = res.model_dump_json()
+        loaded = StressTestResult.model_validate_json(json_str)
+        assert loaded.symbol == "TSLA"
+        assert loaded.risk_level == RiskLevel.HIGH
+
+    def test_risk_telemetry_snapshot_roundtrip(self) -> None:
+        r = RiskRatioResult(
+            symbol="SPY",
+            sharpe_ratio=1.2,
+            sortino_ratio=1.5,
+            downside_deviation=0.01,
+            annualized_return=0.12,
+            annualized_volatility=0.10,
+            risk_free_rate=0.045,
+            sample_size=100,
+        )
+        snap = RiskTelemetrySnapshot(symbol="SPY", ratios=r, risk_level=RiskLevel.LOW)
+        json_str = snap.model_dump_json()
+        loaded = RiskTelemetrySnapshot.model_validate_json(json_str)
+        assert loaded.symbol == "SPY"
+        assert loaded.risk_level == RiskLevel.LOW
+        assert loaded.ratios.sharpe_ratio == 1.2

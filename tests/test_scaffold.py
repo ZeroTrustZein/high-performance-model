@@ -37,6 +37,9 @@ def test_package_metadata():
     assert hasattr(high_performance_model, "MCPServer")
     assert hasattr(high_performance_model, "MarketDataBuffer")
     assert hasattr(high_performance_model, "create_fintech_mcp_server")
+    assert hasattr(high_performance_model, "MonteCarloStressTester")
+    assert hasattr(high_performance_model, "StressTestingSuite")
+    assert hasattr(high_performance_model, "compute_comprehensive_risk_ratios")
 
 
 def test_domain_types():

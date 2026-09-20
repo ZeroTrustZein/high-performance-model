@@ -36,6 +36,27 @@ from high_performance_model.indicators.series import (
     stochastic_oscillator,
     value_at_risk,
 )
+from high_performance_model.risk.metrics import (
+    calculate_calmar_ratio as risk_calmar_ratio,
+)
+from high_performance_model.risk.metrics import (
+    calculate_downside_deviation as risk_downside_deviation,
+)
+from high_performance_model.risk.metrics import (
+    calculate_omega_ratio as risk_omega_ratio,
+)
+from high_performance_model.risk.metrics import (
+    calculate_sharpe_ratio as risk_sharpe_ratio,
+)
+from high_performance_model.risk.metrics import (
+    calculate_sortino_ratio as risk_sortino_ratio,
+)
+from high_performance_model.risk.models import (
+    RiskLevel,
+    StressScenario,
+)
+from high_performance_model.risk.monte_carlo import MonteCarloStressTester
+from high_performance_model.risk.stress import StressTestingSuite
 from high_performance_model.storage.persistence import (
     load_bars_from_jsonl,
     load_buffer_snapshot,
@@ -498,3 +519,58 @@ class TestAlertsEdgeCases:
         assert len(events) == 2
         assert any(e.alert_id == r_spread.alert_id for e in events)
         assert any(e.alert_id == r_imb.alert_id for e in events)
+
+
+class TestRiskAnalyticsEdgeCases:
+    """Edge cases for quantitative risk metrics, Monte Carlo simulations, and stress scenarios."""
+
+    def test_downside_deviation_boundary_inputs(self) -> None:
+        assert risk_downside_deviation([]) == 0.0
+        assert risk_downside_deviation([0.05, 0.10], target_return=0.0) == 0.0
+        # All returns below target
+        assert risk_downside_deviation([-0.05, -0.05], target_return=0.0) == 0.05
+
+    def test_sharpe_and_sortino_ratio_zero_volatility(self) -> None:
+        # Array with identical returns has 0 stddev
+        assert risk_sharpe_ratio([0.02, 0.02, 0.02]) == 0.0
+        # Array with only positive returns has 0 downside deviation
+        assert risk_sortino_ratio([0.05, 0.05, 0.05], target_return=0.0) == 0.0
+
+    def test_calmar_and_omega_edge_cases(self) -> None:
+        # Zero drawdown returns None
+        assert risk_calmar_ratio([0.01, 0.02], max_drawdown_pct=0.0) is None
+        # Tiny drawdown below 1e-6 returns None
+        assert risk_calmar_ratio([0.01, 0.02], max_drawdown_pct=1e-7) is None
+        # Single return returns None
+        assert risk_calmar_ratio([0.01], max_drawdown_pct=-0.10) is None
+        # Omega with no losses returns None
+        assert risk_omega_ratio([0.02, 0.03, 0.04]) is None
+        # Omega with no gains returns 0.0
+        assert risk_omega_ratio([-0.02, -0.03], threshold=0.0) == 0.0
+
+    def test_monte_carlo_edge_parameters(self) -> None:
+        tester = MonteCarloStressTester()
+        with pytest.raises(ValueError, match="initial_price must be positive"):
+            tester.simulate_paths(0.0, 0.05, 0.2)
+        with pytest.raises(ValueError, match="initial_price must be positive"):
+            tester.simulate_paths(-100.0, 0.05, 0.2)
+
+        # Zero volatility floor check (sigma bounded by 1e-4)
+        paths = tester.simulate_paths(100.0, 0.0, 0.0, horizon_days=5, n_simulations=10)
+        assert paths.shape == (10, 6)
+        assert np.all(paths > 0.0)
+
+    def test_stress_testing_invalid_and_boundary_scenarios(self) -> None:
+        sc = StressScenario(
+            name="Extreme Shock",
+            description="Extreme boundary test",
+            price_shock_pct=-0.99,
+            volatility_multiplier=5.0,
+        )
+        with pytest.raises(ValueError, match="initial_price must be positive"):
+            StressTestingSuite.evaluate_scenario("AAPL", -1.0, 0.2, sc)
+
+        res = StressTestingSuite.evaluate_scenario("AAPL", 100.0, 0.2, sc)
+        assert res.risk_level == RiskLevel.CRITICAL
+        assert res.stressed_price == 1.0
+        assert res.stressed_volatility == 1.0

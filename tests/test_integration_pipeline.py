@@ -31,6 +31,14 @@ from high_performance_model.indicators.series import (
     volume_weighted_average_price,
 )
 from high_performance_model.protocol.transports import MemoryTransport
+from high_performance_model.risk import (
+    MonteCarloConfig,
+    MonteCarloStressTester,
+    RiskLevel,
+    RiskTelemetrySnapshot,
+    StressTestingSuite,
+    compute_comprehensive_risk_ratios,
+)
 from high_performance_model.server.app import create_fintech_mcp_server
 from high_performance_model.storage.persistence import (
     load_buffer_snapshot,
@@ -352,3 +360,82 @@ class TestMultiAssetConcurrentPipeline:
         # Stop loss should have triggered and filled
         assert stop_order.status == OrderStatus.FILLED
         assert positions["AAPL"].quantity == 0.0
+
+
+class TestQuantitativeRiskPipeline:
+    """End-to-end integration of quantitative risk analysis, Monte Carlo simulation, and stress testing."""
+
+    def test_full_risk_assessment_pipeline(self) -> None:
+        feed = SyntheticMarketFeed(symbols=["NVDA", "BTC/USD"], seed=123)
+        buffer = MarketDataBuffer(capacity=500)
+
+        # 1. Ingest market history
+        for sym in ["NVDA", "BTC/USD"]:
+            for t in feed.generate_history(sym, n_points=150):
+                buffer.push_tick(t)
+
+        for sym in ["NVDA", "BTC/USD"]:
+            prices = buffer.get_price_series(sym, limit=150)
+            assert len(prices) == 150
+            returns = np.diff(prices) / prices[:-1]
+
+            # 2. Risk Ratios
+            ratios = compute_comprehensive_risk_ratios(
+                symbol=sym,
+                returns=returns,
+                prices=prices,
+                risk_free_rate=0.045,
+            )
+            assert ratios.symbol == sym
+            assert ratios.sample_size == len(returns)
+            assert ratios.sharpe_ratio != 0.0
+            assert ratios.sortino_ratio != 0.0
+            assert ratios.calmar_ratio is not None
+
+            # 3. Monte Carlo Simulation
+            mc_cfg = MonteCarloConfig(n_simulations=500, horizon_days=20, random_seed=42)
+            tester = MonteCarloStressTester(config=mc_cfg)
+            vol = float(np.std(returns, ddof=1) * np.sqrt(252.0))
+            drift = float(np.mean(returns) * 252.0)
+            mc_res = tester.run_stress_test(
+                symbol=sym,
+                initial_price=prices[-1],
+                drift=drift,
+                volatility=vol,
+            )
+            assert mc_res.symbol == sym
+            assert mc_res.worst_case_drawdown <= 0.0
+            assert "95%" in mc_res.var_by_confidence
+
+            # 4. Stress Scenario Evaluations
+            stress_impacts = []
+            for scenario in StressTestingSuite.list_scenarios():
+                res = StressTestingSuite.evaluate_scenario(
+                    symbol=sym,
+                    initial_price=prices[-1],
+                    current_volatility=vol,
+                    scenario=scenario,
+                )
+                assert res.symbol == sym
+                assert res.risk_level in set(RiskLevel)
+                stress_impacts.append(res)
+
+            assert len(stress_impacts) == len(StressTestingSuite.STANDARD_SCENARIOS)
+
+            # 5. Risk Telemetry Snapshot serialization
+            snapshot = RiskTelemetrySnapshot(
+                symbol=sym,
+                ratios=ratios,
+                monte_carlo_var_95=mc_res.var_by_confidence.get("95%"),
+                stress_impacts=stress_impacts,
+                risk_level=RiskLevel.ELEVATED if vol > 0.3 else RiskLevel.MODERATE,
+            )
+            serialized = snapshot.to_dict()
+            assert serialized["symbol"] == sym
+            assert "ratios" in serialized
+            assert len(serialized["stress_impacts"]) == 5
+
+            json_bytes = snapshot.model_dump_json()
+            restored = RiskTelemetrySnapshot.model_validate_json(json_bytes)
+            assert restored.symbol == sym
+            assert restored.ratios.sharpe_ratio == ratios.sharpe_ratio

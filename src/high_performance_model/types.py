@@ -5,9 +5,20 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
+
+if TYPE_CHECKING:
+    from high_performance_model.risk.models import (
+        MonteCarloConfig,
+        MonteCarloStressResult,
+        RiskLevel,
+        RiskRatioResult,
+        RiskTelemetrySnapshot,
+        StressScenario,
+        StressTestResult,
+    )
 
 
 class Side(str, Enum):
@@ -568,6 +579,7 @@ class RiskMetrics(BaseModel):
     symbol: Symbol
     realized_volatility: float = Field(..., ge=0.0)
     sharpe_ratio: Optional[float] = None
+    sortino_ratio: Optional[float] = None
     max_drawdown: float = Field(..., le=0.0)
     value_at_risk_95: Optional[float] = None
     expected_shortfall_95: Optional[float] = None
@@ -581,6 +593,7 @@ class RiskMetrics(BaseModel):
             "symbol": self.symbol,
             "realized_volatility": self.realized_volatility,
             "sharpe_ratio": self.sharpe_ratio,
+            "sortino_ratio": self.sortino_ratio,
             "max_drawdown": self.max_drawdown,
             "value_at_risk_95": self.value_at_risk_95,
             "expected_shortfall_95": self.expected_shortfall_95,
@@ -684,3 +697,56 @@ class BenchmarkRunResult(BaseModel):
             "buffer_utilization_pct": round(self.buffer_utilization_pct, 2),
             "metadata": self.metadata,
         }
+
+
+def __getattr__(name: str) -> Any:
+    """Dynamically resolve risk domain types on demand to avoid circular import."""
+    if name in {
+        "RiskLevel",
+        "RiskRatioResult",
+        "MonteCarloConfig",
+        "MonteCarloStressResult",
+        "StressScenario",
+        "StressTestResult",
+        "RiskTelemetrySnapshot",
+    }:
+        import high_performance_model.risk.models as _risk_models
+
+        return getattr(_risk_models, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "AssetClass",
+    "Bar",
+    "BarTimeframe",
+    "BenchmarkRunResult",
+    "IndicatorConfig",
+    "IndicatorType",
+    "LiquidityTier",
+    "MarketDepthSnapshot",
+    "MarketState",
+    "MarketTelemetrySummary",
+    "MarketTick",
+    "MonteCarloConfig",
+    "MonteCarloStressResult",
+    "OrderBook",
+    "OrderBookLevel",
+    "OrderType",
+    "Quote",
+    "RiskLevel",
+    "RiskMetrics",
+    "RiskRatioResult",
+    "RiskTelemetrySnapshot",
+    "Side",
+    "StressScenario",
+    "StressTestResult",
+    "Symbol",
+    "TechnicalIndicatorResult",
+    "TimeInForce",
+    "TradeExecution",
+    "compute_microprice",
+    "compute_spread_bps",
+    "timeframe_to_seconds",
+    "validate_symbol",
+]

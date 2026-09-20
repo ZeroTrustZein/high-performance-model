@@ -13,6 +13,7 @@ from high_performance_model.indicators.series import (
     max_drawdown,
     realized_volatility,
     sharpe_ratio,
+    sortino_ratio,
     value_at_risk,
 )
 from high_performance_model.types import (
@@ -433,6 +434,7 @@ class MarketDataBuffer:
         returns = np.diff(np.log(prices))
         vol = realized_volatility(prices, period=limit, annualize=True)
         sr = sharpe_ratio(returns, risk_free_rate=0.0, annualize=True)
+        sort_r = sortino_ratio(returns, risk_free_rate=0.0, annualize=True)
         mdd, _ = max_drawdown(prices)
         var_95 = value_at_risk(returns, confidence_level=0.95, method="historical")
         cvar_95 = expected_shortfall(returns, confidence_level=0.95)
@@ -441,6 +443,7 @@ class MarketDataBuffer:
             symbol=sym,
             realized_volatility=round(vol, 4),
             sharpe_ratio=round(sr, 2),
+            sortino_ratio=round(sort_r, 2),
             max_drawdown=round(mdd, 4),
             value_at_risk_95=round(var_95, 4),
             expected_shortfall_95=round(cvar_95, 4),
