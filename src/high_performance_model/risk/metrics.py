@@ -7,6 +7,7 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
+from high_performance_model.indicators.series import max_drawdown
 from high_performance_model.risk.models import RiskRatioResult
 
 
@@ -160,9 +161,7 @@ def compute_comprehensive_risk_ratios(
     if prices is not None:
         p_arr = np.asarray(prices, dtype=np.float64)
         if len(p_arr) > 1:
-            peak = np.maximum.accumulate(p_arr)
-            dds = (p_arr - peak) / np.where(peak > 0, peak, 1.0)
-            mdd = abs(float(np.min(dds)))
+            mdd, _ = max_drawdown(p_arr)
             calmar = calculate_calmar_ratio(
                 arr, max_drawdown_pct=mdd, periods_per_year=periods_per_year
             )

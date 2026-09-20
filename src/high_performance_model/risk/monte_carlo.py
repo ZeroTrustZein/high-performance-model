@@ -113,22 +113,23 @@ class MonteCarloStressTester:
         var_by_conf: Dict[str, float] = {}
         cvar_by_conf: Dict[str, float] = {}
 
-        for cl in self.config.confidence_levels:
-            alpha = 1.0 - cl
-            var_ret = float(np.percentile(returns_to_horizon, alpha * 100.0))
-            tail_losses = returns_to_horizon[returns_to_horizon <= var_ret]
-            cvar_ret = float(np.mean(tail_losses)) if len(tail_losses) > 0 else var_ret
-
-            key = f"{int(cl * 100)}%"
-            var_by_conf[key] = float(round(var_ret, 4))
-            cvar_by_conf[key] = float(round(cvar_ret, 4))
+        if self.config.confidence_levels:
+            alphas = [(1.0 - cl) * 100.0 for cl in self.config.confidence_levels]
+            var_values = np.percentile(returns_to_horizon, alphas)
+            for cl, var_ret in zip(self.config.confidence_levels, var_values):
+                tail_losses = returns_to_horizon[returns_to_horizon <= var_ret]
+                cvar_ret = float(np.mean(tail_losses)) if len(tail_losses) > 0 else float(var_ret)
+                key = f"{int(cl * 100)}%"
+                var_by_conf[key] = float(round(float(var_ret), 4))
+                cvar_by_conf[key] = float(round(cvar_ret, 4))
 
         # Key percentile trajectories for visualization
         percentile_ranks = [5, 25, 50, 75, 95]
-        percentiles_dict: Dict[str, List[float]] = {}
-        for p in percentile_ranks:
-            traj = np.percentile(paths, p, axis=0)
-            percentiles_dict[f"p{p}"] = [float(round(val, 2)) for val in traj]
+        trajectories = np.percentile(paths, percentile_ranks, axis=0)
+        percentiles_dict: Dict[str, List[float]] = {
+            f"p{p}": [float(round(val, 2)) for val in traj]
+            for p, traj in zip(percentile_ranks, trajectories)
+        }
 
         return MonteCarloStressResult(
             symbol=symbol,
