@@ -40,6 +40,12 @@ from high_performance_model.storage.persistence import (
     load_buffer_snapshot,
     save_buffer_snapshot,
 )
+from high_performance_model.risk import (
+    MonteCarloConfig,
+    MonteCarloStressTester,
+    StressTestingSuite,
+    compute_comprehensive_risk_ratios,
+)
 from high_performance_model.telemetry.buffer import MarketDataBuffer
 from high_performance_model.telemetry.generator import SyntheticMarketFeed
 from high_performance_model.types import (
@@ -301,6 +307,144 @@ def create_fintech_mcp_server(
             "sample_size_ticks": len(prices),
         }
         return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+
+    # --- Tool 4b: compute_advanced_risk_ratios ---
+    @server.tool(
+        name="compute_advanced_risk_ratios",
+        description="Compute comprehensive risk-adjusted performance ratios (Sharpe, Sortino, Calmar, Omega, Downside Deviation).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "risk_free_rate": {
+                    "type": "number",
+                    "description": "Annualized risk-free benchmark rate (default 0.045)",
+                    "default": 0.045,
+                },
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def compute_advanced_risk_ratios(
+        symbol: str, risk_free_rate: float = 0.045
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        prices = buffer.get_price_series(sym, limit=252)
+        if len(prices) < 30:
+            for t in feed.generate_history(sym, 100):
+                _ingest_tick(t)
+            prices = buffer.get_price_series(sym, limit=252)
+        returns = np.diff(np.log(prices))
+        ratios = compute_comprehensive_risk_ratios(
+            symbol=sym,
+            returns=returns,
+            prices=prices,
+            risk_free_rate=risk_free_rate,
+        )
+        return CallToolResult(content=[TextContent(text=json.dumps(ratios.to_dict(), indent=2))])
+
+    # --- Tool 4c: run_monte_carlo_stress_test ---
+    @server.tool(
+        name="run_monte_carlo_stress_test",
+        description="Run multi-path Monte Carlo price trajectory simulation and extract tail risk metrics (VaR/CVaR).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "horizon_days": {"type": "integer", "description": "Simulation horizon in days", "default": 30},
+                "n_simulations": {"type": "integer", "description": "Number of simulated paths", "default": 1000},
+                "jump_diffusion": {"type": "boolean", "description": "Enable Merton Jump-Diffusion process", "default": False},
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def run_monte_carlo_stress_test(
+        symbol: str,
+        horizon_days: int = 30,
+        n_simulations: int = 1000,
+        jump_diffusion: bool = False,
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        prices = buffer.get_price_series(sym, limit=100)
+        if len(prices) < 30:
+            for t in feed.generate_history(sym, 50):
+                _ingest_tick(t)
+            prices = buffer.get_price_series(sym, limit=100)
+        curr_price = float(prices[-1]) if len(prices) else 100.0
+        log_rets = np.diff(np.log(prices))
+        vol = float(np.std(log_rets, ddof=1) * np.sqrt(252.0)) if len(log_rets) > 1 else 0.25
+        drift = float(np.mean(log_rets) * 252.0) if len(log_rets) > 1 else 0.05
+
+        config = MonteCarloConfig(
+            n_simulations=n_simulations,
+            horizon_days=horizon_days,
+            jump_diffusion=jump_diffusion,
+        )
+        tester = MonteCarloStressTester(config=config)
+        res = tester.run_stress_test(
+            symbol=sym,
+            initial_price=curr_price,
+            drift=drift,
+            volatility=vol,
+            horizon_days=horizon_days,
+            n_simulations=n_simulations,
+        )
+        return CallToolResult(content=[TextContent(text=json.dumps(res.to_dict(), indent=2))])
+
+    # --- Tool 4d: run_macro_stress_scenario ---
+    @server.tool(
+        name="run_macro_stress_scenario",
+        description="Execute historical macroeconomic crisis shocks (2008 collapse, COVID-19, Tech Flash Crash, etc.) against asset.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "scenario": {"type": "string", "description": "Historical scenario key or 'all'", "default": "all"},
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def run_macro_stress_scenario(
+        symbol: str, scenario: str = "all"
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        prices = buffer.get_price_series(sym, limit=100)
+        if len(prices) < 30:
+            for t in feed.generate_history(sym, 50):
+                _ingest_tick(t)
+            prices = buffer.get_price_series(sym, limit=100)
+        curr_price = float(prices[-1]) if len(prices) else 100.0
+        log_rets = np.diff(np.log(prices))
+        vol = float(np.std(log_rets, ddof=1) * np.sqrt(252.0)) if len(log_rets) > 1 else 0.25
+
+        if scenario.lower() == "all":
+            results = [
+                StressTestingSuite.evaluate_scenario(
+                    symbol=sym,
+                    initial_price=curr_price,
+                    current_volatility=vol,
+                    scenario=scen,
+                )
+                for scen in StressTestingSuite.list_scenarios()
+            ]
+        else:
+            scen_obj = StressTestingSuite.get_scenario(scenario.lower())
+            if not scen_obj:
+                return CallToolResult(
+                    content=[TextContent(text=json.dumps({"error": f"Unknown scenario: {scenario}"}))],
+                    isError=True,
+                )
+            results = [
+                StressTestingSuite.evaluate_scenario(
+                    symbol=sym,
+                    initial_price=curr_price,
+                    current_volatility=vol,
+                    scenario=scen_obj,
+                )
+            ]
+        return CallToolResult(
+            content=[TextContent(text=json.dumps([r.to_dict() for r in results], indent=2))]
+        )
 
     # --- Tool 5: get_volume_profile ---
     @server.tool(

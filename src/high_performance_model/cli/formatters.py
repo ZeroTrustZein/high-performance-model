@@ -11,6 +11,11 @@ from rich.text import Text
 
 from high_performance_model.alerts.models import AlertEvent, AlertRule
 from high_performance_model.execution.models import Portfolio, SimulatedOrder
+from high_performance_model.risk.models import (
+    MonteCarloStressResult,
+    RiskRatioResult,
+    StressTestResult,
+)
 from high_performance_model.types import (
     BenchmarkRunResult,
     MarketTick,
@@ -360,5 +365,83 @@ def format_mcp_prompts_table(prompts: List[Dict[str, Any]]) -> Table:
         args = [a.get("name", "") for a in p.get("arguments", [])]
         args_str = ", ".join(args) if args else "None"
         table.add_row(p.get("name", ""), p.get("description", ""), args_str)
+
+    return table
+
+
+def format_risk_ratios_table(ratios: RiskRatioResult) -> Table:
+    """Format quantitative risk and performance ratios table."""
+    table = Table(title=f"Risk & Performance Ratios - {ratios.symbol}", box=box.ROUNDED)
+    table.add_column("Metric", style="cyan bold")
+    table.add_column("Value", style="green", justify="right")
+    table.add_column("Description", style="white")
+
+    table.add_row("Sharpe Ratio", f"{ratios.sharpe_ratio:.4f}", "Excess return per unit total risk")
+    table.add_row("Sortino Ratio", f"{ratios.sortino_ratio:.4f}", "Excess return per unit downside risk")
+    calmar_str = f"{ratios.calmar_ratio:.4f}" if ratios.calmar_ratio is not None else "N/A"
+    table.add_row("Calmar Ratio", calmar_str, "Annualized return / Max Drawdown")
+    omega_str = f"{ratios.omega_ratio:.4f}" if ratios.omega_ratio is not None else "N/A"
+    table.add_row("Omega Ratio", omega_str, "Probability-weighted gain vs loss")
+    table.add_row("Downside Deviation", f"{ratios.downside_deviation:.6f}", "Semi-deviation below zero threshold")
+    table.add_row("Annualized Return", f"{ratios.annualized_return * 100:.2f}%", "Scaled annualized geometric return")
+    table.add_row("Annualized Volatility", f"{ratios.annualized_volatility * 100:.2f}%", "Annualized return standard deviation")
+    table.add_row("Risk-Free Rate", f"{ratios.risk_free_rate * 100:.2f}%", "Benchmark baseline hurdle rate")
+    table.add_row("Sample Size", str(ratios.sample_size), "Total return observations evaluated")
+    return table
+
+
+def format_monte_carlo_table(result: MonteCarloStressResult) -> Table:
+    """Format Monte Carlo stress simulation summary table."""
+    table = Table(title=f"Monte Carlo Stress Simulation - {result.symbol}", box=box.ROUNDED)
+    table.add_column("Parameter / Metric", style="cyan bold")
+    table.add_column("Value", style="green", justify="right")
+
+    table.add_row("Initial Price", f"${result.initial_price:,.2f}")
+    table.add_row("Simulation Horizon", f"{result.horizon_days} days")
+    table.add_row("Simulated Paths", f"{result.n_simulations:,}")
+    table.add_row("Expected Final Price", f"${result.expected_final_price:,.2f}")
+    table.add_row("Median Final Price", f"${result.median_final_price:,.2f}")
+    table.add_row("Worst-Case Drawdown", f"{result.worst_case_drawdown * 100:.2f}%")
+    table.add_row("Probability of Loss", f"{result.probability_of_loss * 100:.2f}%")
+
+    for conf, var_val in result.var_by_confidence.items():
+        table.add_row(f"Value at Risk ({conf})", f"{var_val * 100:.2f}%")
+    for conf, cvar_val in result.cvar_by_confidence.items():
+        table.add_row(f"Conditional VaR ({conf})", f"{cvar_val * 100:.2f}%")
+
+    return table
+
+
+def format_stress_test_table(results: List[StressTestResult]) -> Table:
+    """Format macroeconomic stress testing results table."""
+    table = Table(title="Macroeconomic Stress Test Results", box=box.ROUNDED)
+    table.add_column("Scenario", style="cyan bold")
+    table.add_column("Init Price", style="white", justify="right")
+    table.add_column("Stressed Price", style="yellow", justify="right")
+    table.add_column("PnL Shock", style="red", justify="right")
+    table.add_column("Stressed Vol", style="white", justify="right")
+    table.add_column("Stressed VaR 95", style="red", justify="right")
+    table.add_column("Risk Tier", style="bold")
+
+    level_styles = {
+        "low": "green",
+        "moderate": "yellow",
+        "elevated": "magenta",
+        "high": "red",
+        "critical": "bold red on white",
+    }
+
+    for r in results:
+        lvl_val = r.risk_level.value if hasattr(r.risk_level, "value") else str(r.risk_level)
+        style = level_styles.get(lvl_val, "white")
+        table.add_row(
+            r.scenario_name,
+            f"${r.initial_price:,.2f}",
+            f"${r.stressed_price:,.2f}",
+            f"{r.pnl_shock_pct * 100:.1f}%",
+            f"{r.stressed_volatility * 100:.1f}%",
+            f"{r.stressed_var_95 * 100:.1f}%",
+            Text(lvl_val.upper(), style=style),
+        )
 
     return table
