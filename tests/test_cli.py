@@ -562,6 +562,21 @@ class TestFormatters:
         table = format_benchmark_table(res)
         assert "Performance Benchmark Results" in str(table.title)
 
+    def test_mcp_formatters(self) -> None:
+        tools = [{"name": "tool1", "description": "desc1", "inputSchema": {"required": ["arg1"]}}]
+        resources = [
+            {"uri": "res://1", "name": "res1", "mimeType": "text/plain", "description": "desc"}
+        ]
+        prompts = [{"name": "prompt1", "description": "desc", "arguments": [{"name": "arg1"}]}]
+
+        t_table = format_mcp_tools_table(tools)
+        r_table = format_mcp_resources_table(resources)
+        p_table = format_mcp_prompts_table(prompts)
+
+        assert "Registered MCP Tools" in str(t_table.title)
+        assert "Registered MCP Resources" in str(r_table.title)
+        assert "Registered MCP Prompts" in str(p_table.title)
+
     def test_risk_formatters(self) -> None:
         ratios = RiskRatioResult(
             symbol="AAPL",
@@ -684,17 +699,41 @@ class TestCliRisk:
         assert result.exit_code == 1
         assert "Unknown scenario" in result.output
 
-    def test_mcp_formatters(self) -> None:
-        tools = [{"name": "tool1", "description": "desc1", "inputSchema": {"required": ["arg1"]}}]
-        resources = [
-            {"uri": "res://1", "name": "res1", "mimeType": "text/plain", "description": "desc"}
-        ]
-        prompts = [{"name": "prompt1", "description": "desc", "arguments": [{"name": "arg1"}]}]
+    def test_risk_stress_invalid_symbol(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "stress", "--symbol", "INVALID@@@"],
+        )
+        assert result.exit_code == 1
+        assert "Error:" in result.output
 
-        t_table = format_mcp_tools_table(tools)
-        r_table = format_mcp_resources_table(resources)
-        p_table = format_mcp_prompts_table(prompts)
+    def test_risk_monte_carlo_invalid_symbol(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "monte-carlo", "--symbol", "INVALID@@@"],
+        )
+        assert result.exit_code == 1
+        assert "Error:" in result.output
 
-        assert "Registered MCP Tools" in str(t_table.title)
-        assert "Registered MCP Resources" in str(r_table.title)
-        assert "Registered MCP Prompts" in str(p_table.title)
+    def test_risk_monte_carlo_jump_diffusion(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "risk",
+                "monte-carlo",
+                "--symbol",
+                "AAPL",
+                "-n",
+                "50",
+                "-h",
+                "5",
+                "--jump-diffusion",
+                "--seed",
+                "123",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Monte Carlo Stress Simulation" in result.output

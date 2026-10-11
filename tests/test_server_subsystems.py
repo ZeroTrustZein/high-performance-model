@@ -443,4 +443,35 @@ class TestServerSubsystemToolsAndResources:
             assert len(stress_data) > 0
             assert "stressed_price" in stress_data[0]
 
+            # 4. run_macro_stress_scenario - specific scenario
+            stress_single_req = JsonRpcRequest(
+                id=73,
+                method="tools/call",
+                params={
+                    "name": "run_macro_stress_scenario",
+                    "arguments": {"symbol": "AAPL", "scenario": "covid_liquidity_shock"},
+                },
+            )
+            stress_single_resp = await server.handle_request(stress_single_req)
+            assert stress_single_resp.id == 73
+            stress_single_data = json.loads(stress_single_resp.result["content"][0]["text"])
+            assert isinstance(stress_single_data, list)
+            assert len(stress_single_data) == 1
+            assert stress_single_data[0]["scenario_name"] == "COVID-19 Liquidity Shock"
+
+            # 5. run_macro_stress_scenario - invalid scenario error
+            stress_bad_req = JsonRpcRequest(
+                id=74,
+                method="tools/call",
+                params={
+                    "name": "run_macro_stress_scenario",
+                    "arguments": {"symbol": "AAPL", "scenario": "unknown_crisis"},
+                },
+            )
+            stress_bad_resp = await server.handle_request(stress_bad_req)
+            assert stress_bad_resp.id == 74
+            assert stress_bad_resp.result["isError"] is True
+            err_data = json.loads(stress_bad_resp.result["content"][0]["text"])
+            assert "error" in err_data
+
         asyncio.run(_run())
