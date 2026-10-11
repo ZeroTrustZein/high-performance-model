@@ -377,15 +377,31 @@ def format_risk_ratios_table(ratios: RiskRatioResult) -> Table:
     table.add_column("Description", style="white")
 
     table.add_row("Sharpe Ratio", f"{ratios.sharpe_ratio:.4f}", "Excess return per unit total risk")
-    table.add_row("Sortino Ratio", f"{ratios.sortino_ratio:.4f}", "Excess return per unit downside risk")
+    table.add_row(
+        "Sortino Ratio", f"{ratios.sortino_ratio:.4f}", "Excess return per unit downside risk"
+    )
     calmar_str = f"{ratios.calmar_ratio:.4f}" if ratios.calmar_ratio is not None else "N/A"
     table.add_row("Calmar Ratio", calmar_str, "Annualized return / Max Drawdown")
     omega_str = f"{ratios.omega_ratio:.4f}" if ratios.omega_ratio is not None else "N/A"
     table.add_row("Omega Ratio", omega_str, "Probability-weighted gain vs loss")
-    table.add_row("Downside Deviation", f"{ratios.downside_deviation:.6f}", "Semi-deviation below zero threshold")
-    table.add_row("Annualized Return", f"{ratios.annualized_return * 100:.2f}%", "Scaled annualized geometric return")
-    table.add_row("Annualized Volatility", f"{ratios.annualized_volatility * 100:.2f}%", "Annualized return standard deviation")
-    table.add_row("Risk-Free Rate", f"{ratios.risk_free_rate * 100:.2f}%", "Benchmark baseline hurdle rate")
+    table.add_row(
+        "Downside Deviation",
+        f"{ratios.downside_deviation:.6f}",
+        "Semi-deviation below zero threshold",
+    )
+    table.add_row(
+        "Annualized Return",
+        f"{ratios.annualized_return * 100:.2f}%",
+        "Scaled annualized geometric return",
+    )
+    table.add_row(
+        "Annualized Volatility",
+        f"{ratios.annualized_volatility * 100:.2f}%",
+        "Annualized return standard deviation",
+    )
+    table.add_row(
+        "Risk-Free Rate", f"{ratios.risk_free_rate * 100:.2f}%", "Benchmark baseline hurdle rate"
+    )
     table.add_row("Sample Size", str(ratios.sample_size), "Total return observations evaluated")
     return table
 
