@@ -14,6 +14,7 @@ Complete programmatic reference for all modules, classes, methods, models, schem
 7. [Storage, Persistence & Replay (`high_performance_model.storage`)](#7-storage-persistence--replay)
 8. [MCP Server Factory & Primitives (`high_performance_model.server.app`)](#8-mcp-server-factory--primitives)
 9. [Command-Line Interface (`high_performance_model.cli`)](#9-command-line-interface)
+10. [Quantitative Risk Analytics & Stress Testing (`high_performance_model.risk`)](#10-quantitative-risk-analytics--stress-testing)
 
 ---
 
@@ -78,6 +79,14 @@ Candlestick aggregation intervals.
 
 #### `LiquidityTier`
 - `TIER_1 = "tier_1"`, `TIER_2 = "tier_2"`, `TIER_3 = "tier_3"`, `TIER_4 = "tier_4"`, `ILLIQUID = "illiquid"`
+
+#### `RiskLevel`
+Qualitative classification of portfolio and asset risk.
+- `RiskLevel.LOW = "low"`
+- `RiskLevel.MODERATE = "moderate"`
+- `RiskLevel.ELEVATED = "elevated"`
+- `RiskLevel.HIGH = "high"`
+- `RiskLevel.CRITICAL = "critical"`
 
 ---
 
@@ -189,6 +198,34 @@ Simulated trade fill record.
 #### `BenchmarkRunResult`
 Performance benchmark execution metrics.
 - Attributes: `total_ticks: int`, `duration_seconds: float`, `ticks_per_second: float`, `latency_p50_us: float`, `latency_p95_us: float`, `latency_p99_us: float`, `buffer_utilization_pct: float`, `metadata: Dict[str, Any]`.
+- Methods: `to_dict() -> Dict[str, Any]`.
+
+#### `RiskRatioResult`
+Calculated risk-adjusted performance ratios and downside semi-variance metrics.
+- Attributes: `symbol: Symbol`, `sharpe_ratio: float`, `sortino_ratio: float`, `calmar_ratio: Optional[float]`, `omega_ratio: Optional[float]`, `downside_deviation: float`, `annualized_return: float`, `annualized_volatility: float`, `risk_free_rate: float`, `sample_size: int`, `timestamp: datetime`.
+- Methods: `to_dict() -> Dict[str, Any]`.
+
+#### `MonteCarloConfig`
+Configuration parameters for stochastic price path simulations.
+- Attributes: `n_simulations: int = 5000`, `horizon_days: int = 30`, `time_steps_per_day: int = 1`, `confidence_levels: List[float] = [0.90, 0.95, 0.99]`, `random_seed: Optional[int] = None`, `jump_diffusion: bool = False`, `jump_intensity: float = 0.1`, `jump_mean: float = 0.0`, `jump_std: float = 0.05`.
+
+#### `MonteCarloStressResult`
+Aggregated output from Monte Carlo price and return trajectory simulations.
+- Attributes: `symbol: Symbol`, `initial_price: float`, `horizon_days: int`, `n_simulations: int`, `expected_final_price: float`, `median_final_price: float`, `worst_case_drawdown: float`, `probability_of_loss: float`, `var_by_confidence: Dict[str, float]`, `cvar_by_confidence: Dict[str, float]`, `percentile_trajectories: Dict[str, List[float]]`, `timestamp: datetime`.
+- Methods: `to_dict() -> Dict[str, Any]`.
+
+#### `StressScenario`
+Macroeconomic or market shock stress scenario specification.
+- Attributes: `name: str`, `description: str`, `price_shock_pct: float`, `volatility_multiplier: float = 1.5`, `liquidity_haircut_pct: float = 0.0`, `correlation_spike: float = 0.2`.
+
+#### `StressTestResult`
+Outcome of applying a macroeconomic stress scenario to a position or market series.
+- Attributes: `symbol: Symbol`, `scenario_name: str`, `initial_price: float`, `stressed_price: float`, `pnl_shock_pct: float`, `stressed_volatility: float`, `stressed_var_95: float`, `risk_level: RiskLevel`, `timestamp: datetime`.
+- Methods: `to_dict() -> Dict[str, Any]`.
+
+#### `RiskTelemetrySnapshot`
+Streaming risk telemetry point emitted by the quantitative risk engine.
+- Attributes: `symbol: Symbol`, `ratios: RiskRatioResult`, `monte_carlo_var_95: Optional[float]`, `stress_impacts: List[StressTestResult]`, `risk_level: RiskLevel`, `timestamp: datetime`.
 - Methods: `to_dict() -> Dict[str, Any]`.
 
 ---
@@ -490,3 +527,116 @@ Entry points: `high-performance-model` and `fintech-mcp`.
 - `exec [submit|portfolio|orders]`: Simulated trading and portfolio status.
 - `mcp [tools|resources|prompts|call|read]`: MCP protocol inspector.
 - `benchmark`: Options `--ticks`, `--symbol`, `--capacity`, `--json`.
+
+---
+
+## 10. Quantitative Risk Analytics & Stress Testing
+
+Located in `high_performance_model.risk`.
+
+### Risk Metrics & Performance Ratios (`high_performance_model.risk.metrics`)
+
+```python
+from high_performance_model.risk.metrics import (
+    calculate_calmar_ratio,
+    calculate_downside_deviation,
+    calculate_omega_ratio,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    compute_comprehensive_risk_ratios,
+)
+```
+
+#### `calculate_downside_deviation(returns: Union[np.ndarray, Sequence[float]], target_return: float = 0.0) -> float`
+Calculates downside semi-deviation below a specified benchmark or minimal acceptable return (MAR).
+- **Parameters**:
+  - `returns`: Return series array or sequence.
+  - `target_return`: Target threshold per period (default: `0.0`).
+- **Returns**: Downside root-mean-square semi-deviation as float rounded to 6 decimal places.
+
+#### `calculate_sharpe_ratio(returns: Union[np.ndarray, Sequence[float]], risk_free_rate: float = 0.045, periods_per_year: float = 252.0, annualize: bool = True) -> float`
+Calculates annualized Sharpe Ratio measuring excess return per unit of total risk.
+- **Parameters**:
+  - `returns`: Period return series.
+  - `risk_free_rate`: Annualized risk-free benchmark rate (default: `0.045` for 4.5%).
+  - `periods_per_year`: Number of periods in annual cycle (default: `252.0` trading days).
+  - `annualize`: Boolean flag whether to apply annual scaling factor $\sqrt{252}$ (default: `True`).
+- **Returns**: Sharpe Ratio as float rounded to 4 decimal places.
+
+#### `calculate_sortino_ratio(returns: Union[np.ndarray, Sequence[float]], risk_free_rate: float = 0.045, target_return: float = 0.0, periods_per_year: float = 252.0, annualize: bool = True) -> float`
+Calculates annualized Sortino Ratio focusing strictly on downside volatility.
+- **Parameters**:
+  - `returns`: Period return series.
+  - `risk_free_rate`: Annualized risk-free benchmark rate.
+  - `target_return`: Minimal acceptable return (MAR).
+  - `periods_per_year`: Number of periods per year.
+  - `annualize`: Whether to apply annual scaling factor $\sqrt{252}$.
+- **Returns**: Sortino Ratio as float rounded to 4 decimal places.
+
+#### `calculate_calmar_ratio(returns: Union[np.ndarray, Sequence[float]], max_drawdown_pct: float, periods_per_year: float = 252.0) -> Optional[float]`
+Calculates Calmar Ratio comparing annualized return to peak-to-trough maximum drawdown.
+- **Parameters**:
+  - `returns`: Period return series.
+  - `max_drawdown_pct`: Absolute maximum drawdown percentage (e.g. `0.15` for 15% drawdown).
+  - `periods_per_year`: Number of periods per year (default: `252.0`).
+- **Returns**: Calmar ratio float, or `None` if samples $< 2$ or max drawdown is zero.
+
+#### `calculate_omega_ratio(returns: Union[np.ndarray, Sequence[float]], threshold: float = 0.0) -> Optional[float]`
+Calculates Omega Ratio as probability-weighted ratio of gains versus losses relative to threshold.
+- **Parameters**:
+  - `returns`: Period return series.
+  - `threshold`: Hurdle return rate (default: `0.0`).
+- **Returns**: Omega ratio float, or `None` if return series empty or total losses zero.
+
+#### `compute_comprehensive_risk_ratios(symbol: str, returns: Union[np.ndarray, Sequence[float]], prices: Optional[Union[np.ndarray, Sequence[float]]] = None, risk_free_rate: float = 0.045, periods_per_year: float = 252.0) -> RiskRatioResult`
+Computes complete package of performance and downside risk ratios in a single vectorized pass.
+- **Parameters**:
+  - `symbol`: Target asset ticker.
+  - `returns`: Array of periodic returns.
+  - `prices`: Optional array of sequential asset prices (used for Calmar Ratio max drawdown derivation).
+  - `risk_free_rate`: Benchmark risk-free interest rate (default: `0.045`).
+  - `periods_per_year`: Annualization factor (default: `252.0`).
+- **Returns**: Fully populated `RiskRatioResult` domain instance.
+
+---
+
+### Monte Carlo Stress Testing (`high_performance_model.risk.monte_carlo`)
+
+```python
+from high_performance_model.risk.monte_carlo import MonteCarloStressTester
+from high_performance_model.risk.models import MonteCarloConfig, MonteCarloStressResult
+```
+
+#### `MonteCarloStressTester(config: Optional[MonteCarloConfig] = None)`
+High-throughput vectorized Monte Carlo stochastic simulation engine.
+- **Methods**:
+  - `simulate_paths(initial_price: float, drift: float, volatility: float, horizon_days: Optional[int] = None, n_simulations: Optional[int] = None) -> np.ndarray`:
+    Simulates Geometric Brownian Motion and optional Merton Jump-Diffusion paths.
+    - Returns: 2D NumPy array of dimensions `(n_simulations, total_steps + 1)`.
+  - `run_stress_test(symbol: str, initial_price: float, drift: float, volatility: float, horizon_days: Optional[int] = None, n_simulations: Optional[int] = None) -> MonteCarloStressResult`:
+    Executes full simulation pipeline, extracting expected final price, median final price, worst-case drawdown, empirical probability of loss, Value-at-Risk (`var_by_confidence`), Expected Shortfall (`cvar_by_confidence`), and percentile fan trajectories (`p5`, `p25`, `p50`, `p75`, `p95`).
+
+---
+
+### Macro Scenario Stress Testing (`high_performance_model.risk.stress`)
+
+```python
+from high_performance_model.risk.stress import StressTestingSuite
+from high_performance_model.risk.models import StressScenario, StressTestResult, RiskLevel
+```
+
+#### `StressTestingSuite`
+Repository and evaluation harness for historical and hypothetical extreme market shock events.
+- **Attributes**:
+  - `STANDARD_SCENARIOS: Dict[str, StressScenario]`:
+    - `"2008_financial_crisis"`: Price shock `-35%`, Volatility `2.8x`, Liquidity haircut `25%`, Correlation spike `0.45`.
+    - `"covid_liquidity_shock"`: Price shock `-25%`, Volatility `2.5x`, Liquidity haircut `20%`, Correlation spike `0.40`.
+    - `"tech_flash_crash"`: Price shock `-12%`, Volatility `1.8x`, Liquidity haircut `15%`, Correlation spike `0.25`.
+    - `"stagflation_rate_spike"`: Price shock `-18%`, Volatility `1.6x`, Liquidity haircut `10%`, Correlation spike `0.20`.
+    - `"crypto_black_swan"`: Price shock `-45%`, Volatility `3.2x`, Liquidity haircut `35%`, Correlation spike `0.60`.
+- **Methods**:
+  - `list_scenarios() -> List[StressScenario]`: Returns list of standard scenario specifications.
+  - `get_scenario(key: str) -> Optional[StressScenario]`: Retrieves scenario by string identifier.
+  - `evaluate_scenario(symbol: str, initial_price: float, current_volatility: float, scenario: StressScenario) -> StressTestResult`:
+    Evaluates instantaneous price shock, stressed volatility, stressed 1-day 95% parametric VaR, and qualitative risk classification (`LOW`, `MODERATE`, `ELEVATED`, `HIGH`, `CRITICAL`).
+

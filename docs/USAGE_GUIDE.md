@@ -13,6 +13,7 @@ This guide provides real-world recipes, configuration templates, and programmati
 6. [Recipe 6: Historical Telemetry Recording, Snapshots & Replay](#recipe-6-historical-telemetry-recording-snapshots--replay)
 7. [Recipe 7: Terminal CLI in Shell Scripting & Automated Workflows](#recipe-7-terminal-cli-in-shell-scripting--automated-workflows)
 8. [Recipe 8: Extending the Server with Custom Tools & Resources](#recipe-8-extending-the-server-with-custom-tools--resources)
+9. [Recipe 9: Quantitative Risk Assessment, Monte Carlo & Stress Testing](#recipe-9-quantitative-risk-assessment-monte-carlo--stress-testing)
 
 ---
 
@@ -398,4 +399,112 @@ async def calculate_custom_spread_arbitrage(symbol_a: str, symbol_b: str):
 # 3. Run server
 if __name__ == "__main__":
     asyncio.run(server.run(StdioTransport()))
+```
+
+---
+
+## Recipe 9: Quantitative Risk Assessment, Monte Carlo & Stress Testing
+
+Evaluate downside risk ratios, simulate multi-path price trajectories under jump diffusion, and stress test positions against historical macro shocks.
+
+```python
+import numpy as np
+from high_performance_model.risk import (
+    MonteCarloConfig,
+    MonteCarloStressTester,
+    RiskTelemetrySnapshot,
+    StressTestingSuite,
+    compute_comprehensive_risk_ratios,
+)
+
+# 1. Historical returns and price sequence
+np.random.seed(42)
+initial_price = 150.0
+daily_returns = np.random.normal(0.0008, 0.018, size=252)  # 1 year of trading
+price_series = initial_price * np.cumprod(1.0 + daily_returns)
+
+# 2. Comprehensive Risk Ratios (Sharpe, Sortino, Calmar, Omega)
+ratios = compute_comprehensive_risk_ratios(
+    symbol="NVDA",
+    returns=daily_returns,
+    prices=price_series,
+    risk_free_rate=0.045,  # 4.5% annual risk-free rate
+    periods_per_year=252,
+)
+
+print("=== Risk-Adjusted Performance Ratios ===")
+print(f"Annualized Return:     {ratios.annualized_return * 100:.2f}%")
+print(f"Annualized Volatility: {ratios.annualized_volatility * 100:.2f}%")
+print(f"Downside Deviation:    {ratios.downside_deviation * 100:.2f}%")
+print(f"Sharpe Ratio:          {ratios.sharpe_ratio:.2f}")
+print(f"Sortino Ratio:         {ratios.sortino_ratio:.2f}")
+if ratios.calmar_ratio is not None:
+    print(f"Calmar Ratio:          {ratios.calmar_ratio:.2f}")
+if ratios.omega_ratio is not None:
+    print(f"Omega Ratio:           {ratios.omega_ratio:.2f}")
+
+# 3. Vectorized Monte Carlo Simulation with Merton Jump-Diffusion
+mc_config = MonteCarloConfig(
+    n_simulations=5000,
+    horizon_days=30,
+    time_steps_per_day=1,
+    confidence_levels=[0.90, 0.95, 0.99],
+    random_seed=42,
+    jump_diffusion=True,  # Model sudden price jumps
+    jump_intensity=0.15,  # Expected jumps per year
+    jump_mean=-0.03,  # Mean jump size (-3%)
+    jump_std=0.06,  # Jump dispersion
+)
+
+mc_tester = MonteCarloStressTester(config=mc_config)
+mc_result = mc_tester.run_stress_test(
+    symbol="NVDA",
+    initial_price=price_series[-1],
+    drift=ratios.annualized_return,
+    volatility=ratios.annualized_volatility,
+)
+
+print("\n=== 30-Day Monte Carlo Simulation (5,000 Paths) ===")
+print(f"Starting Price:       ${mc_result.initial_price:.2f}")
+print(f"Expected Final Price: ${mc_result.expected_final_price:.2f}")
+print(f"Median Final Price:   ${mc_result.median_final_price:.2f}")
+print(f"Worst Drawdown:       {mc_result.worst_case_drawdown * 100:.2f}%")
+print(f"Probability of Loss:  {mc_result.probability_of_loss * 100:.2f}%")
+print(f"VaR 95% (30-Day):     {mc_result.var_by_confidence.get('95%', 0.0) * 100:.2f}%")
+print(f"CVaR 95% (Tail Loss): {mc_result.cvar_by_confidence.get('95%', 0.0) * 100:.2f}%")
+print(f"P5 Worst Trajectory:  ${mc_result.percentile_trajectories['p5'][-1]:.2f}")
+print(f"P95 Bull Trajectory:  ${mc_result.percentile_trajectories['p95'][-1]:.2f}")
+
+# 4. Macroeconomic Stress Testing against Historical Scenarios
+current_price = float(price_series[-1])
+current_vol = ratios.annualized_volatility
+
+stress_results = []
+for scenario_key in ["2008_financial_crisis", "covid_liquidity_shock", "tech_flash_crash"]:
+    scenario = StressTestingSuite.get_scenario(scenario_key)
+    if scenario:
+        result = StressTestingSuite.evaluate_scenario(
+            symbol="NVDA",
+            initial_price=current_price,
+            current_volatility=current_vol,
+            scenario=scenario,
+        )
+        stress_results.append(result)
+        print(f"\n[Scenario: {result.scenario_name}]")
+        print(
+            f"  Stressed Price:      ${result.stressed_price:.2f} ({result.pnl_shock_pct * 100:+.1f}%)"
+        )
+        print(f"  Stressed Volatility: {result.stressed_volatility * 100:.2f}%")
+        print(f"  Stressed 1-Day VaR:  {result.stressed_var_95 * 100:.2f}%")
+        print(f"  Assigned Risk Tier:  {result.risk_level.value.upper()}")
+
+# 5. Build Unified Risk Telemetry Snapshot
+snapshot = RiskTelemetrySnapshot(
+    symbol="NVDA",
+    ratios=ratios,
+    monte_carlo_var_95=mc_result.var_by_confidence.get("95%"),
+    stress_impacts=stress_results,
+    risk_level=stress_results[0].risk_level,
+)
+print(f"\nRisk Telemetry Snapshot serialized: {len(snapshot.to_dict())} keys.")
 ```

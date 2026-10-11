@@ -32,6 +32,12 @@ It provides both standard I/O (`stdio`) and Server-Sent Events HTTP (`sse`) tran
   - Technical analysis suite: SMA, EMA, RSI (Wilder's), MACD (fast/slow/signal/hist), Bollinger Bands, ATR, VWAP, Momentum, Rate of Change (ROC), Stochastic Oscillator, and Rolling Z-Score.
   - Institutional risk analytics: Annualized Realized Volatility, Sharpe Ratio, Sortino Ratio (downside semi-variance), Maximum Drawdown (MDD), Value at Risk (VaR 95%), and Expected Shortfall (CVaR 95%).
 
+- **Quantitative Risk Analytics & Monte Carlo Stress Testing**:
+  - Advanced risk-adjusted ratios: Annualized Sharpe, Sortino, Calmar (MDD normalized), Omega (probability-weighted gain/loss mass), and downside semi-deviation.
+  - Vectorized Monte Carlo stochastic engine: Geometric Brownian Motion (GBM) and Merton Jump-Diffusion multi-path simulations.
+  - Tail risk extraction across horizons: multi-confidence Value at Risk (VaR 90%, 95%, 99%), Conditional VaR (Expected Shortfall), probability of loss, worst-case drawdown, and percentile trajectory bands (`p5` to `p95`).
+  - Macroeconomic stress scenario suite: Pre-built historical crisis shocks (2008 Lehman collapse, 2020 COVID shock, Tech Flash Crash, Stagflation Rate Spike, Crypto Black Swan) with parametric stressed VaR and 5-tier risk classification (`LOW`, `MODERATE`, `ELEVATED`, `HIGH`, `CRITICAL`).
+
 - **Simulated Execution & Portfolio Engine**:
   - Continuous order matching against Level-2 order book depth ladders with price-time priority.
   - Supports Market, Limit, and Stop Loss order types with partial fill tracking.
@@ -98,24 +104,24 @@ It provides both standard I/O (`stdio`) and Server-Sent Events HTTP (`sse`) tran
  │  │ - NumPy Vectorization       │                 │  - L2 Depth Ladder Matching │     │
  │  │ - SMA, EMA, RSI, MACD       │                 │  - Multi-Level Slippage     │     │
  │  │ - Bollinger, ATR, VWAP      │                 │  - Position & PnL Tracking  │     │
- │  │ - VaR, CVaR, Sharpe, Sortino│                 │  - Maker/Taker Fee Modeling │     │
- │  └─────────────────────────────┘                 └─────────────────────────────┘     │
+ │  └──────────────┬──────────────┘                 └──────────────┬──────────────┘     │
  │                 │                                               │                    │
- │                 └───────────────┬───────────────┬───────────────┘                    │
- │                                 ▼               ▼                                    │
- │                 ┌───────────────────────────────┐                                    │
- │                 │      Real-Time Alert Engine   │                                    │
- │                 │  - Price Breakouts / Bounds   │                                    │
- │                 │  - Volume Spikes / OFI Shifts │                                    │
- │                 │  - Observer Event Dispatcher  │                                    │
- │                 └───────────────┬───────────────┘                                    │
- │                                 ▼                                                    │
- │                 ┌───────────────────────────────┐                                    │
- │                 │ Storage & Persistence Layer   │                                    │
- │                 │  - Streaming JSONL Ticks/Bars │                                    │
- │                 │  - Standard CSV Time Series   │                                    │
- │                 │  - Atomic Buffer Snapshots    │                                    │
- │                 └───────────────────────────────┘                                    │
+ │                 ▼                                               ▼                    │
+ │  ┌─────────────────────────────────────────────────────────────────────────────┐     │
+ │  │             Quantitative Risk Analytics & Stress Testing Engine             │     │
+ │  │  - Risk Ratios (Sharpe, Sortino, Calmar, Omega, Downside Semi-Deviation)    │     │
+ │  │  - Monte Carlo SDE Simulations (GBM & Merton Jump Diffusion)                │     │
+ │  │  - Macro Historical Stress Testing (GFC 2008, COVID-19, Flash Crash)        │     │
+ │  │  - Multi-Horizon Tail Risk (VaR / CVaR at 90%, 95%, 99% Confidence)         │     │
+ │  └──────────────────────────────┬───────────────────────────────┬──────────────┘     │
+ │                                 │                               │                    │
+ │                                 ▼                               ▼                    │
+ │                 ┌───────────────────────────────┐ ┌───────────────────────────┐      │
+ │                 │      Real-Time Alert Engine   │ │ Storage & Persistence     │      │
+ │                 │  - Price Breakouts / Bounds   │ │ - Streaming JSONL / CSV   │      │
+ │                 │  - Volume Spikes / OFI Shifts │ │ - Atomic Buffer Snapshots │      │
+ │                 │  - Observer Event Dispatcher  │ │ - Disk Recovery           │      │
+ │                 └───────────────────────────────┘ └───────────────────────────┘      │
  └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -288,6 +294,53 @@ pos = engine.portfolio.positions["AAPL"]
 print(f"Position: {pos.quantity} shares | Unrealized PnL: ${pos.unrealized_pnl:+.2f}")
 ```
 
+### 4. Quantitative Risk Ratios, Monte Carlo & Stress Testing
+```python
+import numpy as np
+from high_performance_model.risk import (
+    MonteCarloConfig,
+    MonteCarloStressTester,
+    StressTestingSuite,
+    compute_comprehensive_risk_ratios,
+)
+
+# 1. Compute comprehensive performance & downside ratios
+returns = np.random.normal(0.0008, 0.018, size=252)
+prices = 150.0 * np.cumprod(1.0 + returns)
+ratios = compute_comprehensive_risk_ratios(
+    symbol="NVDA", returns=returns, prices=prices, risk_free_rate=0.045
+)
+print(
+    f"NVDA Sharpe: {ratios.sharpe_ratio:.2f} | Sortino: {ratios.sortino_ratio:.2f} | Calmar: {ratios.calmar_ratio}"
+)
+
+# 2. Vectorized Monte Carlo simulation with Merton Jump Diffusion
+mc_tester = MonteCarloStressTester(
+    MonteCarloConfig(n_simulations=5000, horizon_days=30, jump_diffusion=True)
+)
+mc_res = mc_tester.run_stress_test(
+    "NVDA",
+    initial_price=float(prices[-1]),
+    drift=ratios.annualized_return,
+    volatility=ratios.annualized_volatility,
+)
+print(
+    f"30-Day VaR 95%: {mc_res.var_by_confidence['95%'] * 100:.2f}% | Expected: ${mc_res.expected_final_price:.2f}"
+)
+
+# 3. Macroeconomic crisis scenario stress testing
+scenario = StressTestingSuite.get_scenario("2008_financial_crisis")
+stress = StressTestingSuite.evaluate_scenario(
+    "NVDA",
+    initial_price=float(prices[-1]),
+    current_volatility=ratios.annualized_volatility,
+    scenario=scenario,
+)
+print(
+    f"Scenario '{stress.scenario_name}': Price ${stress.stressed_price:.2f} | Risk Tier: {stress.risk_level.value.upper()}"
+)
+```
+
 ---
 
 ## CLI Command Reference
@@ -367,6 +420,11 @@ high-performance-model/
 │       │   ├── server.py        # Core MCPServer dispatcher
 │       │   ├── sse.py           # HTTP Server-Sent Events transport server
 │       │   └── transports.py    # StdioTransport, MemoryTransport, and Base Transport
+│       ├── risk/                # Quantitative risk analytics & stress testing
+│       │   ├── metrics.py       # Sharpe, Sortino, Calmar, Omega, and downside deviation
+│       │   ├── models.py        # RiskRatioResult, MonteCarloConfig, StressScenario
+│       │   ├── monte_carlo.py   # Vectorized MonteCarloStressTester (GBM & Merton Jump)
+│       │   └── stress.py        # StressTestingSuite macro scenario shock evaluator
 │       ├── server/              # FinTech MCP application assembly
 │       │   └── app.py           # create_fintech_mcp_server application factory
 │       ├── storage/             # Telemetry persistence and replay
@@ -377,7 +435,7 @@ high-performance-model/
 │       │   ├── buffer.py        # MarketDataBuffer & BarAggregator
 │       │   └── generator.py     # SyntheticMarketFeed jump-diffusion generator
 │       └── py.typed             # PEP 561 typing marker
-├── tests/                       # Comprehensive pytest suite (208 tests, 95% coverage)
+├── tests/                       # Comprehensive pytest suite (275 tests, 96%+ coverage)
 ├── .github/workflows/ci.yml     # GitHub Actions cross-platform CI matrix
 ├── pyproject.toml               # Build system, dependencies, and entrypoints
 ├── requirements.txt             # Core runtime dependencies
@@ -398,7 +456,7 @@ For advanced technical details, consult the dedicated documentation guides:
 
 ## Verification & Testing
 
-The test suite contains 208 comprehensive tests verifying all subsystems, edge cases, protocol compliance, and CLI commands:
+The test suite contains 275 comprehensive tests verifying all subsystems, edge cases, protocol compliance, and CLI commands:
 
 ```bash
 # Run test suite with pytest
