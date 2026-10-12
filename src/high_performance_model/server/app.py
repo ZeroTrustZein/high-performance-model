@@ -35,6 +35,12 @@ from high_performance_model.protocol.models import (
     TextContent,
 )
 from high_performance_model.protocol.server import MCPServer
+from high_performance_model.risk import (
+    MonteCarloConfig,
+    MonteCarloStressTester,
+    StressTestingSuite,
+    compute_comprehensive_risk_ratios,
+)
 from high_performance_model.storage.persistence import (
     MarketDataPersistence,
     load_buffer_snapshot,
@@ -48,6 +54,25 @@ from high_performance_model.types import (
     OrderType,
     Side,
 )
+
+
+def _json_tool_result(payload: Any, is_error: bool = False) -> CallToolResult:
+    return CallToolResult(
+        content=[TextContent(text=json.dumps(payload, indent=2))],
+        isError=is_error,
+    )
+
+
+def _json_resource_result(uri: str, data: Any) -> ReadResourceResult:
+    return ReadResourceResult(
+        contents=[
+            {
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": json.dumps(data, indent=2),
+            }
+        ]
+    )
 
 
 def create_fintech_mcp_server(
@@ -86,6 +111,21 @@ def create_fintech_mcp_server(
         buffer.push_order_book(ob)
         exec_sim.update_order_book(ob)
         alerts.on_order_book(ob)
+
+    def _ensure_price_history(sym: str, limit: int = 100, min_ticks: int = 30) -> np.ndarray:
+        prices = buffer.get_price_series(sym, limit=limit)
+        if len(prices) < min_ticks:
+            for t in feed.generate_history(sym, max(min_ticks, 50)):
+                _ingest_tick(t)
+            prices = buffer.get_price_series(sym, limit=limit)
+        return prices
+
+    def _compute_price_stats(prices: np.ndarray) -> tuple[float, float, float]:
+        curr_price = float(prices[-1]) if len(prices) else 100.0
+        log_rets = np.diff(np.log(prices))
+        vol = float(np.std(log_rets, ddof=1) * np.sqrt(252.0)) if len(log_rets) > 1 else 0.25
+        drift = float(np.mean(log_rets) * 252.0) if len(log_rets) > 1 else 0.05
+        return curr_price, vol, drift
 
     # Warm up buffer with historical ticks and order books
     for sym in symbols:
@@ -127,7 +167,7 @@ def create_fintech_mcp_server(
             "spread": ob.spread if ob else None,
             "mid_price": ob.mid_price if ob else None,
         }
-        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+        return _json_tool_result(payload)
 
     # --- Tool 2: get_order_book_depth ---
     @server.tool(
@@ -161,7 +201,7 @@ def create_fintech_mcp_server(
             "asks": [lvl.model_dump() for lvl in ob.asks[:depth]],
             "timestamp": ob.timestamp.isoformat(),
         }
-        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+        return _json_tool_result(payload)
 
     # --- Tool 3: calculate_technical_indicators ---
     @server.tool(
@@ -262,7 +302,7 @@ def create_fintech_mcp_server(
                 "percent_d": float(round(valid_d[-1], 2)) if len(valid_d) else None,
             }
 
-        return CallToolResult(content=[TextContent(text=json.dumps(out, indent=2))])
+        return _json_tool_result(out)
 
     # --- Tool 4: compute_risk_metrics ---
     @server.tool(
@@ -276,12 +316,7 @@ def create_fintech_mcp_server(
     )
     async def compute_risk_metrics(symbol: str) -> CallToolResult:
         sym = symbol.upper()
-        prices = buffer.get_price_series(sym, limit=150)
-        if len(prices) < 30:
-            for t in feed.generate_history(sym, 50):
-                _ingest_tick(t)
-            prices = buffer.get_price_series(sym, limit=150)
-
+        prices = _ensure_price_history(sym, limit=150, min_ticks=30)
         vol = buffer.compute_realized_volatility(sym)
         returns = np.diff(np.log(prices))
         sharpe = sharpe_ratio(returns, annualize=True)
@@ -300,7 +335,137 @@ def create_fintech_mcp_server(
             "expected_shortfall_95": cvar_95,
             "sample_size_ticks": len(prices),
         }
-        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+        return _json_tool_result(payload)
+
+    # --- Tool 4b: compute_advanced_risk_ratios ---
+    @server.tool(
+        name="compute_advanced_risk_ratios",
+        description="Compute comprehensive risk-adjusted performance ratios (Sharpe, Sortino, Calmar, Omega, Downside Deviation).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "risk_free_rate": {
+                    "type": "number",
+                    "description": "Annualized risk-free benchmark rate (default 0.045)",
+                    "default": 0.045,
+                },
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def compute_advanced_risk_ratios(
+        symbol: str, risk_free_rate: float = 0.045
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        prices = _ensure_price_history(sym, limit=252, min_ticks=30)
+        returns = np.diff(np.log(prices))
+        ratios = compute_comprehensive_risk_ratios(
+            symbol=sym,
+            returns=returns,
+            prices=prices,
+            risk_free_rate=risk_free_rate,
+        )
+        return _json_tool_result(ratios.to_dict())
+
+    # --- Tool 4c: run_monte_carlo_stress_test ---
+    @server.tool(
+        name="run_monte_carlo_stress_test",
+        description="Run multi-path Monte Carlo price trajectory simulation and extract tail risk metrics (VaR/CVaR).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "horizon_days": {
+                    "type": "integer",
+                    "description": "Simulation horizon in days",
+                    "default": 30,
+                },
+                "n_simulations": {
+                    "type": "integer",
+                    "description": "Number of simulated paths",
+                    "default": 1000,
+                },
+                "jump_diffusion": {
+                    "type": "boolean",
+                    "description": "Enable Merton Jump-Diffusion process",
+                    "default": False,
+                },
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def run_monte_carlo_stress_test(
+        symbol: str,
+        horizon_days: int = 30,
+        n_simulations: int = 1000,
+        jump_diffusion: bool = False,
+    ) -> CallToolResult:
+        sym = symbol.upper()
+        prices = _ensure_price_history(sym, limit=100, min_ticks=30)
+        curr_price, vol, drift = _compute_price_stats(prices)
+
+        config = MonteCarloConfig(
+            n_simulations=n_simulations,
+            horizon_days=horizon_days,
+            jump_diffusion=jump_diffusion,
+        )
+        tester = MonteCarloStressTester(config=config)
+        res = tester.run_stress_test(
+            symbol=sym,
+            initial_price=curr_price,
+            drift=drift,
+            volatility=vol,
+            horizon_days=horizon_days,
+            n_simulations=n_simulations,
+        )
+        return _json_tool_result(res.to_dict())
+
+    # --- Tool 4d: run_macro_stress_scenario ---
+    @server.tool(
+        name="run_macro_stress_scenario",
+        description="Execute historical macroeconomic crisis shocks (2008 collapse, COVID-19, Tech Flash Crash, etc.) against asset.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Market ticker symbol"},
+                "scenario": {
+                    "type": "string",
+                    "description": "Historical scenario key or 'all'",
+                    "default": "all",
+                },
+            },
+            "required": ["symbol"],
+        },
+    )
+    async def run_macro_stress_scenario(symbol: str, scenario: str = "all") -> CallToolResult:
+        sym = symbol.upper()
+        prices = _ensure_price_history(sym, limit=100, min_ticks=30)
+        curr_price, vol, _ = _compute_price_stats(prices)
+
+        if scenario.lower() == "all":
+            results = [
+                StressTestingSuite.evaluate_scenario(
+                    symbol=sym,
+                    initial_price=curr_price,
+                    current_volatility=vol,
+                    scenario=scen,
+                )
+                for scen in StressTestingSuite.list_scenarios()
+            ]
+        else:
+            scen_obj = StressTestingSuite.get_scenario(scenario.lower())
+            if not scen_obj:
+                return _json_tool_result({"error": f"Unknown scenario: {scenario}"}, is_error=True)
+            results = [
+                StressTestingSuite.evaluate_scenario(
+                    symbol=sym,
+                    initial_price=curr_price,
+                    current_volatility=vol,
+                    scenario=scen_obj,
+                )
+            ]
+        return _json_tool_result([r.to_dict() for r in results])
 
     # --- Tool 5: get_volume_profile ---
     @server.tool(
@@ -318,9 +483,7 @@ def create_fintech_mcp_server(
     async def get_volume_profile(symbol: str, bins: int = 10) -> CallToolResult:
         sym = symbol.upper()
         profile = buffer.compute_volume_profile(sym, bins=max(2, min(bins, 50)))
-        return CallToolResult(
-            content=[TextContent(text=json.dumps({"symbol": sym, **profile}, indent=2))]
-        )
+        return _json_tool_result({"symbol": sym, **profile})
 
     # --- Tool 6: estimate_market_impact ---
     @server.tool(
@@ -344,7 +507,7 @@ def create_fintech_mcp_server(
         sym = symbol.upper()
         exec_side = Side.SELL if side.lower() == "sell" else Side.BUY
         impact = buffer.estimate_market_impact(sym, size=size, side=exec_side)
-        return CallToolResult(content=[TextContent(text=json.dumps(impact, indent=2))])
+        return _json_tool_result(impact)
 
     # --- Tool 7: submit_simulated_order ---
     @server.tool(
@@ -392,7 +555,7 @@ def create_fintech_mcp_server(
             stop_price=stop_price,
             auto_match=True,
         )
-        return CallToolResult(content=[TextContent(text=json.dumps(order.to_dict(), indent=2))])
+        return _json_tool_result(order.to_dict())
 
     # --- Tool 8: cancel_simulated_order ---
     @server.tool(
@@ -412,11 +575,8 @@ def create_fintech_mcp_server(
     async def cancel_simulated_order(order_id: str) -> CallToolResult:
         cancelled = exec_sim.cancel_order(order_id)
         if not cancelled:
-            return CallToolResult(
-                content=[TextContent(text=json.dumps({"error": f"Order not found: {order_id}"}))],
-                isError=True,
-            )
-        return CallToolResult(content=[TextContent(text=json.dumps(cancelled.to_dict(), indent=2))])
+            return _json_tool_result({"error": f"Order not found: {order_id}"}, is_error=True)
+        return _json_tool_result(cancelled.to_dict())
 
     # --- Tool 9: get_portfolio_state ---
     @server.tool(
@@ -426,7 +586,7 @@ def create_fintech_mcp_server(
     )
     async def get_portfolio_state() -> CallToolResult:
         summary = exec_sim.get_portfolio_summary()
-        return CallToolResult(content=[TextContent(text=json.dumps(summary, indent=2))])
+        return _json_tool_result(summary)
 
     # --- Tool 10: create_market_alert ---
     @server.tool(
@@ -466,7 +626,7 @@ def create_fintech_mcp_server(
             one_shot=one_shot,
             message=message,
         )
-        return CallToolResult(content=[TextContent(text=json.dumps(rule.to_dict(), indent=2))])
+        return _json_tool_result(rule.to_dict())
 
     # --- Tool 11: list_market_alerts ---
     @server.tool(
@@ -481,7 +641,7 @@ def create_fintech_mcp_server(
         rules = [r.to_dict() for r in alerts.get_active_rules(symbol=symbol)]
         events = [e.to_dict() for e in alerts.get_event_history(symbol=symbol)]
         payload = {"active_rules": rules, "recent_events": events}
-        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+        return _json_tool_result(payload)
 
     # --- Tool 12: export_buffer_snapshot ---
     @server.tool(
@@ -500,7 +660,7 @@ def create_fintech_mcp_server(
     )
     async def export_buffer_snapshot(file_path: str = "data/snapshot.json") -> CallToolResult:
         res = save_buffer_snapshot(buffer, file_path)
-        return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
+        return _json_tool_result(res)
 
     # --- Tool 13: import_buffer_snapshot ---
     @server.tool(
@@ -526,12 +686,9 @@ def create_fintech_mcp_server(
                 "file_path": file_path,
                 "buffered_ticks": sum(len(buffer.get_ticks(s)) for s in symbols),
             }
-            return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
+            return _json_tool_result(res)
         except Exception as exc:
-            return CallToolResult(
-                content=[TextContent(text=json.dumps({"status": "error", "error": str(exc)}))],
-                isError=True,
-            )
+            return _json_tool_result({"status": "error", "error": str(exc)}, is_error=True)
 
     # --- Resources ---
     @server.resource(
@@ -540,22 +697,14 @@ def create_fintech_mcp_server(
         description="Real-time multi-ticker price, volume, and VWAP snapshot",
     )
     async def resource_telemetry_snapshot(uri: str) -> ReadResourceResult:
-        snapshot = {}
-        for s in symbols:
-            tick = buffer.get_latest_tick(s)
-            snapshot[s] = {
-                "price": tick.price if tick else None,
+        snapshot = {
+            s: {
+                "price": tick.price if (tick := buffer.get_latest_tick(s)) else None,
                 "vwap": buffer.compute_vwap(s),
             }
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(snapshot, indent=2),
-                }
-            ]
-        )
+            for s in symbols
+        }
+        return _json_resource_result(uri, snapshot)
 
     @server.resource(
         uri="indicators://catalog",
@@ -593,15 +742,7 @@ def create_fintech_mcp_server(
                 },
             ]
         }
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(catalog, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, catalog)
 
     @server.resource(
         uri="portfolio://state",
@@ -609,16 +750,7 @@ def create_fintech_mcp_server(
         description="Real-time cash balance, open positions, unrealized PnL, and total portfolio equity",
     )
     async def resource_portfolio_state(uri: str) -> ReadResourceResult:
-        state = exec_sim.get_portfolio_summary()
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(state, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, exec_sim.get_portfolio_summary())
 
     @server.resource(
         uri="alerts://active",
@@ -626,16 +758,7 @@ def create_fintech_mcp_server(
         description="Current market rules and recent triggered alerts",
     )
     async def resource_alerts_active(uri: str) -> ReadResourceResult:
-        data = alerts.to_dict()
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(data, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, alerts.to_dict())
 
     @server.resource(
         uri="execution://history",
@@ -644,15 +767,7 @@ def create_fintech_mcp_server(
     )
     async def resource_execution_history(uri: str) -> ReadResourceResult:
         trades = [t.to_dict() for t in exec_sim.get_trade_history()[-50:]]
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps({"trades": trades}, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, {"trades": trades})
 
     # --- Prompts ---
     @server.prompt(

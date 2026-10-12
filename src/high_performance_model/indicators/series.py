@@ -38,8 +38,6 @@ def exponential_moving_average(
     for i in range(1, n):
         ema[i] = smoothing * arr[i] + (1.0 - smoothing) * ema[i - 1]
 
-    if n < period:
-        return ema
     return ema
 
 
@@ -54,25 +52,18 @@ def relative_strength_index(data: Union[np.ndarray, list[float]], period: int = 
     gains = np.where(deltas > 0, deltas, 0.0)
     losses = np.where(deltas < 0, -deltas, 0.0)
 
-    rsi = np.full(n, np.nan)
-    avg_gain = np.mean(gains[:period])
-    avg_loss = np.mean(losses[:period])
+    def _calc_rsi(gain: float, loss: float) -> float:
+        return 100.0 if loss == 0.0 else (100.0 - (100.0 / (1.0 + (gain / loss))))
 
-    if avg_loss == 0:
-        rsi[period] = 100.0
-    else:
-        rs = avg_gain / avg_loss
-        rsi[period] = 100.0 - (100.0 / (1.0 + rs))
+    rsi = np.full(n, np.nan)
+    avg_gain = float(np.mean(gains[:period]))
+    avg_loss = float(np.mean(losses[:period]))
+    rsi[period] = _calc_rsi(avg_gain, avg_loss)
 
     for i in range(period, len(deltas)):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-
-        if avg_loss == 0:
-            rsi[i + 1] = 100.0
-        else:
-            rs = avg_gain / avg_loss
-            rsi[i + 1] = 100.0 - (100.0 / (1.0 + rs))
+        rsi[i + 1] = _calc_rsi(avg_gain, avg_loss)
 
     return rsi
 

@@ -17,13 +17,22 @@ from high_performance_model.cli import (
     format_mcp_prompts_table,
     format_mcp_resources_table,
     format_mcp_tools_table,
+    format_monte_carlo_table,
     format_order_book_table,
     format_orders_table,
     format_portfolio_panel,
     format_positions_table,
     format_quote_panel,
+    format_risk_ratios_table,
+    format_stress_test_table,
 )
 from high_performance_model.execution.models import Portfolio, SimulatedOrder
+from high_performance_model.risk.models import (
+    MonteCarloStressResult,
+    RiskLevel,
+    RiskRatioResult,
+    StressTestResult,
+)
 from high_performance_model.storage.persistence import save_ticks_to_jsonl
 from high_performance_model.telemetry.generator import SyntheticMarketFeed
 from high_performance_model.types import (
@@ -567,3 +576,164 @@ class TestFormatters:
         assert "Registered MCP Tools" in str(t_table.title)
         assert "Registered MCP Resources" in str(r_table.title)
         assert "Registered MCP Prompts" in str(p_table.title)
+
+    def test_risk_formatters(self) -> None:
+        ratios = RiskRatioResult(
+            symbol="AAPL",
+            sharpe_ratio=1.5,
+            sortino_ratio=2.1,
+            calmar_ratio=1.2,
+            omega_ratio=1.45,
+            downside_deviation=0.012,
+            annualized_return=0.18,
+            annualized_volatility=0.12,
+            risk_free_rate=0.045,
+            sample_size=252,
+        )
+        t_ratios = format_risk_ratios_table(ratios)
+        assert "Risk & Performance Ratios - AAPL" in str(t_ratios.title)
+
+        mc_res = MonteCarloStressResult(
+            symbol="AAPL",
+            initial_price=150.0,
+            horizon_days=30,
+            n_simulations=1000,
+            expected_final_price=155.0,
+            median_final_price=154.5,
+            worst_case_drawdown=-0.12,
+            probability_of_loss=0.35,
+            var_by_confidence={"95%": -0.08},
+            cvar_by_confidence={"95%": -0.11},
+        )
+        t_mc = format_monte_carlo_table(mc_res)
+        assert "Monte Carlo Stress Simulation - AAPL" in str(t_mc.title)
+
+        stress_res = [
+            StressTestResult(
+                symbol="AAPL",
+                scenario_name="2008 Financial Crisis",
+                initial_price=150.0,
+                stressed_price=97.5,
+                pnl_shock_pct=-0.35,
+                stressed_volatility=0.45,
+                stressed_var_95=0.046,
+                risk_level=RiskLevel.CRITICAL,
+            )
+        ]
+        t_stress = format_stress_test_table(stress_res)
+        assert "Macroeconomic Stress Test Results" in str(t_stress.title)
+
+
+class TestCliRisk:
+    """Verify quantitative risk, Monte Carlo, and stress testing CLI commands."""
+
+    def test_risk_ratios_table_output(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["risk", "ratios", "--symbol", "AAPL", "--bars", "60"])
+        assert result.exit_code == 0
+        assert "Risk & Performance Ratios - AAPL" in result.output
+        assert "Sharpe Ratio" in result.output
+
+    def test_risk_ratios_json_output(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["risk", "ratios", "--symbol", "AAPL", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["symbol"] == "AAPL"
+        assert "sharpe_ratio" in data
+        assert "sortino_ratio" in data
+
+    def test_risk_ratios_invalid_symbol(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["risk", "ratios", "--symbol", "INVALID$$$"])
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+    def test_risk_monte_carlo_table_output(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "monte-carlo", "--symbol", "AAPL", "-n", "100", "-h", "10", "--seed", "42"],
+        )
+        assert result.exit_code == 0
+        assert "Monte Carlo Stress Simulation" in result.output
+        assert "Simulated Paths" in result.output
+
+    def test_risk_monte_carlo_json_output(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "monte-carlo", "--symbol", "AAPL", "-n", "100", "--json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["symbol"] == "AAPL"
+        assert "worst_case_drawdown" in data
+        assert "probability_of_loss" in data
+
+    def test_risk_stress_all_table_output(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["risk", "stress", "--symbol", "AAPL"])
+        assert result.exit_code == 0
+        assert "Macroeconomic Stress Test Results" in result.output
+        assert "2008" in result.output
+
+    def test_risk_stress_single_scenario_json(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "stress", "--symbol", "AAPL", "--scenario", "covid_liquidity_shock", "--json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["scenario_name"] == "COVID-19 Liquidity Shock"
+
+    def test_risk_stress_invalid_scenario(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "stress", "--symbol", "AAPL", "--scenario", "non_existent_crisis"],
+        )
+        assert result.exit_code == 1
+        assert "Unknown scenario" in result.output
+
+    def test_risk_stress_invalid_symbol(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "stress", "--symbol", "INVALID@@@"],
+        )
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+    def test_risk_monte_carlo_invalid_symbol(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["risk", "monte-carlo", "--symbol", "INVALID@@@"],
+        )
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+    def test_risk_monte_carlo_jump_diffusion(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "risk",
+                "monte-carlo",
+                "--symbol",
+                "AAPL",
+                "-n",
+                "50",
+                "-h",
+                "5",
+                "--jump-diffusion",
+                "--seed",
+                "123",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Monte Carlo Stress Simulation" in result.output

@@ -27,11 +27,14 @@ from high_performance_model.cli.formatters import (
     format_mcp_prompts_table,
     format_mcp_resources_table,
     format_mcp_tools_table,
+    format_monte_carlo_table,
     format_order_book_table,
     format_orders_table,
     format_portfolio_panel,
     format_positions_table,
     format_quote_panel,
+    format_risk_ratios_table,
+    format_stress_test_table,
 )
 from high_performance_model.execution.engine import ExecutionSimulator
 from high_performance_model.indicators.series import (
@@ -49,6 +52,10 @@ from high_performance_model.indicators.series import (
 from high_performance_model.protocol.jsonrpc import JsonRpcRequest
 from high_performance_model.protocol.sse import SSEServer
 from high_performance_model.protocol.transports import StdioTransport
+from high_performance_model.risk.metrics import compute_comprehensive_risk_ratios
+from high_performance_model.risk.models import MonteCarloConfig
+from high_performance_model.risk.monte_carlo import MonteCarloStressTester
+from high_performance_model.risk.stress import StressTestingSuite
 from high_performance_model.server.app import create_fintech_mcp_server
 from high_performance_model.storage.persistence import (
     load_buffer_snapshot,
@@ -65,6 +72,30 @@ from high_performance_model.types import (
 
 console = Console()
 logger = logging.getLogger("high_performance_model.cli")
+
+
+def _require_valid_symbol(symbol: str) -> str:
+    """Validate symbol or print red error and exit with code 1."""
+    try:
+        return validate_symbol(symbol)
+    except (ValueError, TypeError) as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
+
+
+def _fetch_risk_market_data(
+    symbol: str, bars: int = 60
+) -> tuple[str, float, float, float, np.ndarray, np.ndarray]:
+    """Fetch standardized market data inputs for risk analysis."""
+    sym = _require_valid_symbol(symbol)
+    feed = SyntheticMarketFeed(symbols=[sym])
+    tick = feed.generate_tick(sym)
+    hist_bars = feed.generate_bars(sym, n_bars=max(bars, 30))
+    prices = np.array([b.close for b in hist_bars], dtype=np.float64)
+    log_rets = np.diff(np.log(prices))
+    volatility = float(np.std(log_rets, ddof=1) * np.sqrt(252.0)) if len(log_rets) > 1 else 0.25
+    drift = float(np.mean(log_rets) * 252.0) if len(log_rets) > 1 else 0.05
+    return sym, tick.price, volatility, drift, prices, log_rets
 
 
 @click.group()
@@ -206,11 +237,7 @@ def serve(
 )
 def quote(symbol: str, depth: int, json_mode: bool) -> None:
     """Fetch current market quote and order book snapshot."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     tick = feed.generate_tick(sym)
@@ -313,11 +340,7 @@ def indicators(
     json_mode: bool,
 ) -> None:
     """Compute vectorized technical indicators on market data."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     hist_bars = feed.generate_bars(sym, n_bars=max(bars, period + 35))
@@ -519,11 +542,7 @@ def stream(
     out_format: str,
 ) -> None:
     """Stream live synthetic market data ticks or bars."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     delay = 1.0 / max(rate, 0.1)
@@ -833,11 +852,7 @@ def alerts_add(
     message: Optional[str],
 ) -> None:
     """Create a new market condition alert rule."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     atype = AlertType(alert_type_str.lower())
     engine = AlertEngine()
@@ -874,11 +889,7 @@ def alerts_add(
 )
 def alerts_monitor(symbol: str, count: int) -> None:
     """Monitor real-time ticks against active threshold alerts."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     engine = AlertEngine()
     feed = SyntheticMarketFeed(symbols=[sym])
@@ -950,11 +961,7 @@ def exec_submit(
     stop_price: Optional[float],
 ) -> None:
     """Submit a simulated order against real-time synthetic L2 book."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     order_side = Side(side.lower())
     order_type = OrderType(order_type_str.lower())
@@ -1187,6 +1194,214 @@ def benchmark(ticks: int, symbol: str, json_mode: bool) -> None:
 
     # Preserves exact title "Performance Benchmark Results" for compatibility
     table = format_benchmark_table(bench_res)
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Command Group: risk
+# ---------------------------------------------------------------------------
+@cli.group(name="risk")
+def risk_group() -> None:
+    """Quantitative risk analytics, Monte Carlo simulations, and stress testing."""
+    pass
+
+
+@risk_group.command(name="ratios")
+@click.option(
+    "--symbol",
+    "-s",
+    default="AAPL",
+    show_default=True,
+    help="Target ticker symbol",
+)
+@click.option(
+    "--bars",
+    "-b",
+    "--ticks",
+    default=252,
+    show_default=True,
+    help="Number of historical price periods/bars to evaluate",
+)
+@click.option(
+    "--risk-free-rate",
+    "-r",
+    default=0.045,
+    show_default=True,
+    help="Annualized baseline risk-free hurdle rate (e.g. 0.045 for 4.5%)",
+)
+@click.option(
+    "--json-output",
+    "-j",
+    "--json",
+    "json_mode",
+    is_flag=True,
+    help="Output results as raw JSON",
+)
+def risk_ratios(
+    symbol: str,
+    bars: int,
+    risk_free_rate: float,
+    json_mode: bool,
+) -> None:
+    """Compute institutional risk-adjusted ratios (Sharpe, Sortino, Calmar, Omega)."""
+    sym, _, _, _, prices, returns = _fetch_risk_market_data(symbol, bars=bars)
+
+    ratios = compute_comprehensive_risk_ratios(
+        symbol=sym,
+        returns=returns,
+        prices=prices,
+        risk_free_rate=risk_free_rate,
+        periods_per_year=252.0,
+    )
+
+    if json_mode:
+        click.echo(json.dumps(ratios.to_dict(), indent=2))
+        return
+
+    table = format_risk_ratios_table(ratios)
+    console.print(table)
+
+
+@risk_group.command(name="monte-carlo")
+@click.option(
+    "--symbol",
+    "-s",
+    default="AAPL",
+    show_default=True,
+    help="Target ticker symbol",
+)
+@click.option(
+    "--simulations",
+    "-n",
+    default=1000,
+    show_default=True,
+    help="Number of simulated price trajectories",
+)
+@click.option(
+    "--horizon",
+    "-h",
+    "--days",
+    default=30,
+    show_default=True,
+    help="Simulation horizon in days",
+)
+@click.option(
+    "--jump-diffusion",
+    is_flag=True,
+    default=False,
+    help="Enable Merton Jump-Diffusion process",
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=None,
+    help="Random seed for reproducibility",
+)
+@click.option(
+    "--json-output",
+    "-j",
+    "--json",
+    "json_mode",
+    is_flag=True,
+    help="Output results as raw JSON",
+)
+def risk_monte_carlo(
+    symbol: str,
+    simulations: int,
+    horizon: int,
+    jump_diffusion: bool,
+    seed: Optional[int],
+    json_mode: bool,
+) -> None:
+    """Run vectorized Monte Carlo stochastic simulations for tail risk and VaR."""
+    sym, price, volatility, drift, _, _ = _fetch_risk_market_data(symbol, bars=60)
+
+    config = MonteCarloConfig(
+        n_simulations=simulations,
+        horizon_days=horizon,
+        jump_diffusion=jump_diffusion,
+        random_seed=seed,
+    )
+    tester = MonteCarloStressTester(config=config)
+    result = tester.run_stress_test(
+        symbol=sym,
+        initial_price=price,
+        drift=drift,
+        volatility=volatility,
+        horizon_days=horizon,
+        n_simulations=simulations,
+    )
+
+    if json_mode:
+        click.echo(json.dumps(result.to_dict(), indent=2))
+        return
+
+    table = format_monte_carlo_table(result)
+    console.print(table)
+
+
+@risk_group.command(name="stress")
+@click.option(
+    "--symbol",
+    "-s",
+    default="AAPL",
+    show_default=True,
+    help="Target ticker symbol",
+)
+@click.option(
+    "--scenario",
+    default="all",
+    show_default=True,
+    help="Macro shock scenario key or 'all'",
+)
+@click.option(
+    "--json-output",
+    "-j",
+    "--json",
+    "json_mode",
+    is_flag=True,
+    help="Output results as raw JSON",
+)
+def risk_stress(
+    symbol: str,
+    scenario: str,
+    json_mode: bool,
+) -> None:
+    """Execute macroeconomic crisis stress test shocks against asset positions."""
+    sym, price, volatility, _, _, _ = _fetch_risk_market_data(symbol, bars=60)
+
+    if scenario.lower() == "all":
+        results = [
+            StressTestingSuite.evaluate_scenario(
+                symbol=sym,
+                initial_price=price,
+                current_volatility=volatility,
+                scenario=scen,
+            )
+            for scen in StressTestingSuite.list_scenarios()
+        ]
+    else:
+        scen_obj = StressTestingSuite.get_scenario(scenario.lower())
+        if not scen_obj:
+            avail = ", ".join(StressTestingSuite.STANDARD_SCENARIOS.keys())
+            console.print(
+                f"[bold red]Error:[/bold red] Unknown scenario '{scenario}'. Available: {avail}"
+            )
+            sys.exit(1)
+        results = [
+            StressTestingSuite.evaluate_scenario(
+                symbol=sym,
+                initial_price=price,
+                current_volatility=volatility,
+                scenario=scen_obj,
+            )
+        ]
+
+    if json_mode:
+        click.echo(json.dumps([r.to_dict() for r in results], indent=2))
+        return
+
+    table = format_stress_test_table(results)
     console.print(table)
 
 

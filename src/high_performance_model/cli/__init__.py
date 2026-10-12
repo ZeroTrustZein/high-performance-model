@@ -8,11 +8,14 @@ from high_performance_model.cli.formatters import (
     format_mcp_prompts_table,
     format_mcp_resources_table,
     format_mcp_tools_table,
+    format_monte_carlo_table,
     format_order_book_table,
     format_orders_table,
     format_portfolio_panel,
     format_positions_table,
     format_quote_panel,
+    format_risk_ratios_table,
+    format_stress_test_table,
 )
 from high_performance_model.cli.main import cli
 
@@ -25,9 +28,12 @@ __all__ = [
     "format_mcp_prompts_table",
     "format_mcp_resources_table",
     "format_mcp_tools_table",
+    "format_monte_carlo_table",
     "format_order_book_table",
     "format_orders_table",
     "format_portfolio_panel",
     "format_positions_table",
     "format_quote_panel",
+    "format_risk_ratios_table",
+    "format_stress_test_table",
 ]
