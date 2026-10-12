@@ -350,6 +350,18 @@ high-performance-model stream BTC/USD --count 5 --mode bar --format jsonl
 high-performance-model benchmark --ticks 50000 --symbol NVDA
 ```
 
+### Risk Analytics & Stress Testing CLI
+```bash
+# Compute institutional risk-adjusted ratios (Sharpe, Sortino, Calmar, Omega)
+high-performance-model risk ratios --symbol NVDA --bars 252 --risk-free-rate 0.045
+
+# Vectorized Monte Carlo SDE simulation (Merton jump diffusion with VaR/CVaR)
+high-performance-model risk monte-carlo --symbol NVDA --simulations 2000 --horizon 30 --jump-diffusion
+
+# Macroeconomic historical stress shocks against asset positions
+high-performance-model risk stress --symbol NVDA --scenario 2008_financial_crisis
+```
+
 ---
 
 ## Recipe 8: Extending the Server with Custom Tools & Resources

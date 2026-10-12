@@ -511,6 +511,35 @@ def create_fintech_mcp_server(
 
 Configures and returns a fully initialized `MCPServer` instance with pre-warmed telemetry buffers, simulated execution engine, alert engine, and persistence repository.
 
+### Registered MCP Tools (16)
+1. `get_market_quote(symbol: str)`: Top-of-book quote, spread bps, and microprice.
+2. `get_order_book_depth(symbol: str, depth: int = 10)`: L2 order book depth ladder with cumulative notionals.
+3. `calculate_technical_indicators(symbol: str, indicator: str, period: int = 14)`: Vectorized technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP, Momentum, ROC, Stochastic).
+4. `compute_risk_metrics(symbol: str, limit: int = 150)`: Historical volatility, Sharpe, Sortino, Max Drawdown, VaR 95%, CVaR 95%.
+5. `compute_advanced_risk_ratios(symbol: str, risk_free_rate: float = 0.045, periods_per_year: float = 252.0)`: Comprehensive risk-adjusted return ratios (Sharpe, Sortino, Calmar, Omega, downside semi-deviation).
+6. `run_monte_carlo_stress_test(symbol: str, horizon_days: int = 30, simulations: int = 1000, drift: Optional[float] = None, volatility: Optional[float] = None)`: Vectorized Monte Carlo stochastic simulation (GBM / Merton Jump-Diffusion) with multi-horizon VaR/CVaR and fan percentiles.
+7. `run_macro_stress_scenario(symbol: str, scenario: str = "2008_financial_crisis")`: Macroeconomic crisis stress test shocks against asset positions.
+8. `get_volume_profile(symbol: str, bins: int = 10)`: Volume distribution by price levels and Point of Control (POC).
+9. `estimate_market_impact(symbol: str, size: float, side: str)`: Projected execution price and slippage from depth walking.
+10. `submit_simulated_order(symbol: str, side: str, quantity: float, order_type: str = "market", price: Optional[float] = None, stop_price: Optional[float] = None)`: Simulated order submission.
+11. `cancel_simulated_order(order_id: str)`: Cancels active simulated order.
+12. `get_portfolio_state()`: Returns portfolio equity, cash, unrealized/realized PnL, and positions.
+13. `create_market_alert(symbol: str, alert_type: str, threshold: float, one_shot: bool = False)`: Registers real-time price/spread/volume alert rule.
+14. `list_market_alerts(symbol: Optional[str] = None)`: Lists active and historical alert events.
+15. `export_buffer_snapshot(file_path: str)`: Serializes ring buffer telemetry to disk.
+16. `import_buffer_snapshot(file_path: str)`: Restores ring buffer telemetry from disk snapshot.
+
+### Registered MCP Resources (5)
+1. `market://telemetry/snapshot`: Global multi-symbol market telemetry summary.
+2. `indicators://catalog`: Comprehensive catalog of technical indicators, formulations, and default parameters.
+3. `portfolio://state`: Real-time portfolio valuation, cash balance, and open positions.
+4. `alerts://active`: Active monitoring rules and historical trigger events.
+5. `execution://history`: Audit trail of simulated trade executions.
+
+### Registered MCP Prompts (2)
+1. `analyze_market_structure(symbol: str, timeframe: str = "1m")`: Structured LLM prompt for multi-timeframe order book depth, spread, and microstructure analysis.
+2. `evaluate_trading_opportunity(symbol: str, strategy: str = "momentum")`: Structured prompt for evaluating indicator confluence, risk-reward ratios, and execution parameters.
+
 ---
 
 ## 9. Command-Line Interface
@@ -527,6 +556,10 @@ Entry points: `high-performance-model` and `fintech-mcp`.
 - `exec [submit|portfolio|orders]`: Simulated trading and portfolio status.
 - `mcp [tools|resources|prompts|call|read]`: MCP protocol inspector.
 - `benchmark`: Options `--ticks`, `--symbol`, `--capacity`, `--json`.
+- `risk [ratios|monte-carlo|stress]`: Quantitative risk metrics and stress testing.
+  - `risk ratios`: Options `-s/--symbol`, `-b/--bars/--ticks`, `-r/--risk-free-rate`, `-j/--json`.
+  - `risk monte-carlo`: Options `-s/--symbol`, `-n/--simulations`, `-h/--horizon/--days`, `--jump-diffusion`, `--seed`, `-j/--json`.
+  - `risk stress`: Options `-s/--symbol`, `--scenario`, `-j/--json`.
 
 ---
 

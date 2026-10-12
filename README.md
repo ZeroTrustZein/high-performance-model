@@ -9,7 +9,7 @@
 
 A high-throughput, low-latency Model Context Protocol (MCP) server engineered for real-time FinTech market telemetry, Level-2 (L2) order book depth tracking, vectorized technical indicators, simulated order execution, and event-driven market alerting implemented in Python.
 
-It provides both standard I/O (`stdio`) and Server-Sent Events HTTP (`sse`) transports, exposing 13 specialized financial tools, 5 real-time telemetry resources, and 2 prompt workflows to AI coding assistants (Claude Desktop, OpenCode, Cursor) and automated trading agents.
+It provides both standard I/O (`stdio`) and Server-Sent Events HTTP (`sse`) transports, exposing 16 specialized financial tools, 5 real-time telemetry resources, and 2 prompt workflows to AI coding assistants (Claude Desktop, OpenCode, Cursor) and automated trading agents.
 
 ---
 
@@ -190,13 +190,16 @@ Then connect your client to `http://127.0.0.1:8000/sse`.
 
 ## MCP Primitives Catalog
 
-### Tools (13)
+### Tools (16)
 | Tool Name | Parameters | Description |
 |---|---|---|
 | `get_market_quote` | `symbol: str` | Current top-of-book bid/ask quote, spread in bps, and microprice. |
 | `get_order_book_depth` | `symbol: str`, `depth: int = 10` | L2 order book depth ladder with price, size, and notional values. |
 | `calculate_technical_indicators` | `symbol: str`, `indicator: str`, `period: int` | Vectorized technical indicators (SMA, EMA, RSI, MACD, Bollinger, etc.). |
 | `compute_risk_metrics` | `symbol: str`, `limit: int = 150` | Realized Volatility, Sharpe, Sortino, Max Drawdown, VaR 95%, CVaR 95%. |
+| `compute_advanced_risk_ratios` | `symbol: str`, `risk_free_rate: float = 0.045`, `periods_per_year: float = 252.0` | Comprehensive risk-adjusted return metrics: Sharpe, Sortino, Calmar, Omega, and downside semi-deviation. |
+| `run_monte_carlo_stress_test` | `symbol: str`, `horizon_days: int = 30`, `simulations: int = 1000`, `drift: Optional[float] = None`, `volatility: Optional[float] = None` | Vectorized Monte Carlo stochastic simulation (GBM / Merton Jump Diffusion) with multi-horizon VaR/CVaR and percentile fan trajectories. |
+| `run_macro_stress_scenario` | `symbol: str`, `scenario: str = "2008_financial_crisis"` | Instantaneous macroeconomic shock scenario evaluation (2008 GFC, COVID-19, Flash Crash, Stagflation, Crypto Swan). |
 | `get_volume_profile` | `symbol: str`, `bins: int = 10` | Volume distribution across price levels with Point of Control (POC). |
 | `estimate_market_impact` | `symbol: str`, `size: float`, `side: str` | Simulates depth fill to estimate average execution price and slippage. |
 | `submit_simulated_order` | `symbol: str`, `side: str`, `quantity: float`, `order_type: str`, `price: float` | Submits simulated market, limit, or stop order to matching engine. |
@@ -345,7 +348,7 @@ print(
 
 ## CLI Command Reference
 
-The command-line interface provides 10 core command trees:
+The command-line interface provides 11 core command trees:
 
 | Command | Synopsis | Example |
 |---|---|---|
@@ -359,6 +362,7 @@ The command-line interface provides 10 core command trees:
 | `exec` | Submit simulated orders and view portfolio PnL | `high-performance-model exec submit NVDA --side buy --quantity 20` |
 | `mcp` | Directly inspect and invoke MCP tools & resources | `high-performance-model mcp call --tool get_market_quote --args '{"symbol":"AAPL"}'` |
 | `benchmark` | Run high-throughput latency & ingestion stress tests | `high-performance-model benchmark --ticks 50000 --symbol NVDA` |
+| `risk` | Comprehensive risk ratios, Monte Carlo SDE, and macro stress tests | `high-performance-model risk ratios NVDA` |
 
 ---
 

@@ -27,8 +27,8 @@ To satisfy these requirements, `high-performance-model` is built as a modular, d
                │  └─────────┬─────────┴─────────┬─────────┴─────┬─────┘  │
                │            └───────────────────┼───────────────┘        │
                │                                ▼                        │
-               │                    MCPServer (JSON-RPC 2.0)             │
-               │        - Tools (13)   - Resources (5)   - Prompts (2)   │
+                │                    MCPServer (JSON-RPC 2.0)             │
+                │        - Tools (16)   - Resources (5)   - Prompts (2)   │
                └────────────────────────────────┼────────────────────────┘
                                                 │
                                                 ▼
@@ -97,7 +97,7 @@ Incoming frames are parsed by `parse_message()` and dispatched asynchronously:
 - Fully decorated registration paradigm (`@server.tool()`, `@server.resource()`, `@server.prompt()`).
 
 ### 2.3 MCP Capability Catalog
-The server registers 13 specialized tools, 5 state resources, and 2 prompt workflows:
+The server registers 16 specialized tools, 5 state resources, and 2 prompt workflows:
 
 | Category | Identifier | Description |
 |---|---|---|
@@ -105,6 +105,9 @@ The server registers 13 specialized tools, 5 state resources, and 2 prompt workf
 | | `get_order_book_depth` | Returns Level-2 depth ladder up to $N$ bid/ask levels. |
 | | `calculate_technical_indicators` | Executes vectorized NumPy technical indicators for any symbol. |
 | | `compute_risk_metrics` | Evaluates Realized Volatility, Sharpe, Sortino, Max Drawdown, VaR, CVaR. |
+| | `compute_advanced_risk_ratios` | Evaluates Sharpe, Sortino, Calmar, Omega, downside semi-deviation. |
+| | `run_monte_carlo_stress_test` | Runs vectorized Monte Carlo SDE simulation (GBM / Merton) with VaR/CVaR. |
+| | `run_macro_stress_scenario` | Assesses instantaneous macroeconomic and systemic market shock impacts. |
 | | `get_volume_profile` | Computes volume distribution by price bins and Point of Control (POC). |
 | | `estimate_market_impact` | Simulates depth fill to project execution price and slippage bps. |
 | | `submit_simulated_order` | Submits market, limit, or stop simulated orders to matching engine. |
@@ -469,7 +472,7 @@ $$\text{RiskLevel} = \begin{cases}
 
 ## 9. Developer CLI Subsystem & MCP Inspector
 
-The CLI (`high-performance-model` and `fintech-mcp`) provides 10 core command trees:
+The CLI (`high-performance-model` and `fintech-mcp`) provides 11 core command trees:
 - `serve`: Launches the MCP server over stdio or SSE.
 - `quote`: Inspects real-time quotes, spread bps, and microprice.
 - `indicators`: Runs vectorized technical analysis directly from terminal.
@@ -480,6 +483,7 @@ The CLI (`high-performance-model` and `fintech-mcp`) provides 10 core command tr
 - `exec`: Submits simulated orders, inspects portfolio equity, and audits trade executions.
 - `mcp`: Interactive terminal inspector for MCP tools, resources, and prompts.
 - `benchmark`: Executes high-throughput latency and ingestion stress tests.
+- `risk`: Quantitative risk-adjusted ratios, Monte Carlo SDE paths, and macroeconomic stress testing.
 
 ---
 

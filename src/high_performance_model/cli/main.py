@@ -74,6 +74,30 @@ console = Console()
 logger = logging.getLogger("high_performance_model.cli")
 
 
+def _require_valid_symbol(symbol: str) -> str:
+    """Validate symbol or print red error and exit with code 1."""
+    try:
+        return validate_symbol(symbol)
+    except (ValueError, TypeError) as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
+
+
+def _fetch_risk_market_data(
+    symbol: str, bars: int = 60
+) -> tuple[str, float, float, float, np.ndarray, np.ndarray]:
+    """Fetch standardized market data inputs for risk analysis."""
+    sym = _require_valid_symbol(symbol)
+    feed = SyntheticMarketFeed(symbols=[sym])
+    tick = feed.generate_tick(sym)
+    hist_bars = feed.generate_bars(sym, n_bars=max(bars, 30))
+    prices = np.array([b.close for b in hist_bars], dtype=np.float64)
+    log_rets = np.diff(np.log(prices))
+    volatility = float(np.std(log_rets, ddof=1) * np.sqrt(252.0)) if len(log_rets) > 1 else 0.25
+    drift = float(np.mean(log_rets) * 252.0) if len(log_rets) > 1 else 0.05
+    return sym, tick.price, volatility, drift, prices, log_rets
+
+
 @click.group()
 @click.version_option(version="0.1.0", prog_name="high-performance-model")
 def cli() -> None:
@@ -213,11 +237,7 @@ def serve(
 )
 def quote(symbol: str, depth: int, json_mode: bool) -> None:
     """Fetch current market quote and order book snapshot."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     tick = feed.generate_tick(sym)
@@ -320,11 +340,7 @@ def indicators(
     json_mode: bool,
 ) -> None:
     """Compute vectorized technical indicators on market data."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     hist_bars = feed.generate_bars(sym, n_bars=max(bars, period + 35))
@@ -526,11 +542,7 @@ def stream(
     out_format: str,
 ) -> None:
     """Stream live synthetic market data ticks or bars."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     feed = SyntheticMarketFeed(symbols=[sym])
     delay = 1.0 / max(rate, 0.1)
@@ -840,11 +852,7 @@ def alerts_add(
     message: Optional[str],
 ) -> None:
     """Create a new market condition alert rule."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     atype = AlertType(alert_type_str.lower())
     engine = AlertEngine()
@@ -881,11 +889,7 @@ def alerts_add(
 )
 def alerts_monitor(symbol: str, count: int) -> None:
     """Monitor real-time ticks against active threshold alerts."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     engine = AlertEngine()
     feed = SyntheticMarketFeed(symbols=[sym])
@@ -957,11 +961,7 @@ def exec_submit(
     stop_price: Optional[float],
 ) -> None:
     """Submit a simulated order against real-time synthetic L2 book."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    sym = _require_valid_symbol(symbol)
 
     order_side = Side(side.lower())
     order_type = OrderType(order_type_str.lower())
@@ -1244,16 +1244,7 @@ def risk_ratios(
     json_mode: bool,
 ) -> None:
     """Compute institutional risk-adjusted ratios (Sharpe, Sortino, Calmar, Omega)."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
-
-    feed = SyntheticMarketFeed(symbols=[sym])
-    hist_bars = feed.generate_bars(sym, n_bars=max(bars, 30))
-    prices = np.array([b.close for b in hist_bars], dtype=np.float64)
-    returns = np.diff(np.log(prices))
+    sym, _, _, _, prices, returns = _fetch_risk_market_data(symbol, bars=bars)
 
     ratios = compute_comprehensive_risk_ratios(
         symbol=sym,
@@ -1323,19 +1314,7 @@ def risk_monte_carlo(
     json_mode: bool,
 ) -> None:
     """Run vectorized Monte Carlo stochastic simulations for tail risk and VaR."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
-
-    feed = SyntheticMarketFeed(symbols=[sym])
-    tick = feed.generate_tick(sym)
-    hist_bars = feed.generate_bars(sym, n_bars=60)
-    prices = np.array([b.close for b in hist_bars], dtype=np.float64)
-    log_rets = np.diff(np.log(prices))
-    volatility = float(np.std(log_rets, ddof=1) * np.sqrt(252.0))
-    drift = float(np.mean(log_rets) * 252.0)
+    sym, price, volatility, drift, _, _ = _fetch_risk_market_data(symbol, bars=60)
 
     config = MonteCarloConfig(
         n_simulations=simulations,
@@ -1346,7 +1325,7 @@ def risk_monte_carlo(
     tester = MonteCarloStressTester(config=config)
     result = tester.run_stress_test(
         symbol=sym,
-        initial_price=tick.price,
+        initial_price=price,
         drift=drift,
         volatility=volatility,
         horizon_days=horizon,
@@ -1389,28 +1368,33 @@ def risk_stress(
     json_mode: bool,
 ) -> None:
     """Execute macroeconomic crisis stress test shocks against asset positions."""
-    try:
-        sym = validate_symbol(symbol)
-    except (ValueError, TypeError) as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
-
-    feed = SyntheticMarketFeed(symbols=[sym])
-    tick = feed.generate_tick(sym)
-    hist_bars = feed.generate_bars(sym, n_bars=60)
-    prices = np.array([b.close for b in hist_bars], dtype=np.float64)
-    log_rets = np.diff(np.log(prices))
-    volatility = float(np.std(log_rets, ddof=1) * np.sqrt(252.0))
+    sym, price, volatility, _, _, _ = _fetch_risk_market_data(symbol, bars=60)
 
     if scenario.lower() == "all":
         results = [
             StressTestingSuite.evaluate_scenario(
                 symbol=sym,
-                initial_price=tick.price,
+                initial_price=price,
                 current_volatility=volatility,
                 scenario=scen,
             )
             for scen in StressTestingSuite.list_scenarios()
+        ]
+    else:
+        scen_obj = StressTestingSuite.get_scenario(scenario.lower())
+        if not scen_obj:
+            avail = ", ".join(StressTestingSuite.STANDARD_SCENARIOS.keys())
+            console.print(
+                f"[bold red]Error:[/bold red] Unknown scenario '{scenario}'. Available: {avail}"
+            )
+            sys.exit(1)
+        results = [
+            StressTestingSuite.evaluate_scenario(
+                symbol=sym,
+                initial_price=price,
+                current_volatility=volatility,
+                scenario=scen_obj,
+            )
         ]
     else:
         scen_obj = StressTestingSuite.get_scenario(scenario.lower())

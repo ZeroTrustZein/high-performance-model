@@ -483,9 +483,7 @@ def create_fintech_mcp_server(
     async def get_volume_profile(symbol: str, bins: int = 10) -> CallToolResult:
         sym = symbol.upper()
         profile = buffer.compute_volume_profile(sym, bins=max(2, min(bins, 50)))
-        return CallToolResult(
-            content=[TextContent(text=json.dumps({"symbol": sym, **profile}, indent=2))]
-        )
+        return _json_tool_result({"symbol": sym, **profile})
 
     # --- Tool 6: estimate_market_impact ---
     @server.tool(
@@ -509,7 +507,7 @@ def create_fintech_mcp_server(
         sym = symbol.upper()
         exec_side = Side.SELL if side.lower() == "sell" else Side.BUY
         impact = buffer.estimate_market_impact(sym, size=size, side=exec_side)
-        return CallToolResult(content=[TextContent(text=json.dumps(impact, indent=2))])
+        return _json_tool_result(impact)
 
     # --- Tool 7: submit_simulated_order ---
     @server.tool(
@@ -557,7 +555,7 @@ def create_fintech_mcp_server(
             stop_price=stop_price,
             auto_match=True,
         )
-        return CallToolResult(content=[TextContent(text=json.dumps(order.to_dict(), indent=2))])
+        return _json_tool_result(order.to_dict())
 
     # --- Tool 8: cancel_simulated_order ---
     @server.tool(
@@ -577,11 +575,8 @@ def create_fintech_mcp_server(
     async def cancel_simulated_order(order_id: str) -> CallToolResult:
         cancelled = exec_sim.cancel_order(order_id)
         if not cancelled:
-            return CallToolResult(
-                content=[TextContent(text=json.dumps({"error": f"Order not found: {order_id}"}))],
-                isError=True,
-            )
-        return CallToolResult(content=[TextContent(text=json.dumps(cancelled.to_dict(), indent=2))])
+            return _json_tool_result({"error": f"Order not found: {order_id}"}, is_error=True)
+        return _json_tool_result(cancelled.to_dict())
 
     # --- Tool 9: get_portfolio_state ---
     @server.tool(
@@ -591,7 +586,7 @@ def create_fintech_mcp_server(
     )
     async def get_portfolio_state() -> CallToolResult:
         summary = exec_sim.get_portfolio_summary()
-        return CallToolResult(content=[TextContent(text=json.dumps(summary, indent=2))])
+        return _json_tool_result(summary)
 
     # --- Tool 10: create_market_alert ---
     @server.tool(
@@ -631,7 +626,7 @@ def create_fintech_mcp_server(
             one_shot=one_shot,
             message=message,
         )
-        return CallToolResult(content=[TextContent(text=json.dumps(rule.to_dict(), indent=2))])
+        return _json_tool_result(rule.to_dict())
 
     # --- Tool 11: list_market_alerts ---
     @server.tool(
@@ -646,7 +641,7 @@ def create_fintech_mcp_server(
         rules = [r.to_dict() for r in alerts.get_active_rules(symbol=symbol)]
         events = [e.to_dict() for e in alerts.get_event_history(symbol=symbol)]
         payload = {"active_rules": rules, "recent_events": events}
-        return CallToolResult(content=[TextContent(text=json.dumps(payload, indent=2))])
+        return _json_tool_result(payload)
 
     # --- Tool 12: export_buffer_snapshot ---
     @server.tool(
@@ -665,7 +660,7 @@ def create_fintech_mcp_server(
     )
     async def export_buffer_snapshot(file_path: str = "data/snapshot.json") -> CallToolResult:
         res = save_buffer_snapshot(buffer, file_path)
-        return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
+        return _json_tool_result(res)
 
     # --- Tool 13: import_buffer_snapshot ---
     @server.tool(
@@ -691,12 +686,9 @@ def create_fintech_mcp_server(
                 "file_path": file_path,
                 "buffered_ticks": sum(len(buffer.get_ticks(s)) for s in symbols),
             }
-            return CallToolResult(content=[TextContent(text=json.dumps(res, indent=2))])
+            return _json_tool_result(res)
         except Exception as exc:
-            return CallToolResult(
-                content=[TextContent(text=json.dumps({"status": "error", "error": str(exc)}))],
-                isError=True,
-            )
+            return _json_tool_result({"status": "error", "error": str(exc)}, is_error=True)
 
     # --- Resources ---
     @server.resource(
@@ -705,22 +697,14 @@ def create_fintech_mcp_server(
         description="Real-time multi-ticker price, volume, and VWAP snapshot",
     )
     async def resource_telemetry_snapshot(uri: str) -> ReadResourceResult:
-        snapshot = {}
-        for s in symbols:
-            tick = buffer.get_latest_tick(s)
-            snapshot[s] = {
-                "price": tick.price if tick else None,
+        snapshot = {
+            s: {
+                "price": tick.price if (tick := buffer.get_latest_tick(s)) else None,
                 "vwap": buffer.compute_vwap(s),
             }
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(snapshot, indent=2),
-                }
-            ]
-        )
+            for s in symbols
+        }
+        return _json_resource_result(uri, snapshot)
 
     @server.resource(
         uri="indicators://catalog",
@@ -758,15 +742,7 @@ def create_fintech_mcp_server(
                 },
             ]
         }
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(catalog, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, catalog)
 
     @server.resource(
         uri="portfolio://state",
@@ -774,16 +750,7 @@ def create_fintech_mcp_server(
         description="Real-time cash balance, open positions, unrealized PnL, and total portfolio equity",
     )
     async def resource_portfolio_state(uri: str) -> ReadResourceResult:
-        state = exec_sim.get_portfolio_summary()
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(state, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, exec_sim.get_portfolio_summary())
 
     @server.resource(
         uri="alerts://active",
@@ -791,16 +758,7 @@ def create_fintech_mcp_server(
         description="Current market rules and recent triggered alerts",
     )
     async def resource_alerts_active(uri: str) -> ReadResourceResult:
-        data = alerts.to_dict()
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(data, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, alerts.to_dict())
 
     @server.resource(
         uri="execution://history",
@@ -809,15 +767,7 @@ def create_fintech_mcp_server(
     )
     async def resource_execution_history(uri: str) -> ReadResourceResult:
         trades = [t.to_dict() for t in exec_sim.get_trade_history()[-50:]]
-        return ReadResourceResult(
-            contents=[
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps({"trades": trades}, indent=2),
-                }
-            ]
-        )
+        return _json_resource_result(uri, {"trades": trades})
 
     # --- Prompts ---
     @server.prompt(
