@@ -1396,21 +1396,6 @@ def risk_stress(
                 scenario=scen_obj,
             )
         ]
-    else:
-        scen_obj = StressTestingSuite.get_scenario(scenario.lower())
-        if not scen_obj:
-            avail = ", ".join(StressTestingSuite.STANDARD_SCENARIOS.keys())
-            console.print(
-                f"[bold red]Error:[/bold red] Unknown scenario '{scenario}'. Available: {avail}"
-            )
-            sys.exit(1)
-        res = StressTestingSuite.evaluate_scenario(
-            symbol=sym,
-            initial_price=tick.price,
-            current_volatility=volatility,
-            scenario=scen_obj,
-        )
-        results = [res]
 
     if json_mode:
         click.echo(json.dumps([r.to_dict() for r in results], indent=2))
