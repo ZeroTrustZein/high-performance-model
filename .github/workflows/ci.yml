@@ -133,5 +133,5 @@ jobs:
           high-performance-model --help
           fintech-mcp --help
           high-performance-model risk --help
-          high-performance-model stress-test --help
-          high-performance-model monte-carlo --help
+          high-performance-model risk stress --help
+          high-performance-model risk monte-carlo --help

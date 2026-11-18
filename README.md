@@ -1,8 +1,8 @@
 # High-Performance Model Context Protocol (MCP) Server for FinTech Telemetry
 
-[![CI](https://github.com/zein/high-performance-model/actions/workflows/ci.yml/badge.svg)](https://github.com/zein/high-performance-model/actions)
+[![CI](https://github.com/ZeroTrustZein/high-performance-model/actions/workflows/ci.yml/badge.svg)](https://github.com/ZeroTrustZein/high-performance-model/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked: Mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy-lang.org/)
 [![Protocol: MCP 2024-11-05](https://img.shields.io/badge/MCP-2024--11--05-success.svg)](https://modelcontextprotocol.io/)
@@ -131,7 +131,7 @@ It provides both standard I/O (`stdio`) and Server-Sent Events HTTP (`sse`) tran
 
 ### Standard Installation
 ```bash
-git clone https://github.com/zein/high-performance-model.git
+git clone https://github.com/ZeroTrustZein/high-performance-model.git
 cd high-performance-model
 pip install -e .
 ```

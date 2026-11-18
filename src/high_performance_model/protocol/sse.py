@@ -140,9 +140,7 @@ class SSEServer:
             elif method == "POST" and path == "/messages":
                 await self._handle_post_message(reader, writer, headers, query_params)
             else:
-                writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found")
-                await writer.drain()
-                writer.close()
+                await self._send_simple(writer, "404 Not Found", "Not Found")
 
         except Exception as exc:
             logger.warning("HTTP connection error: %s", exc)
@@ -194,31 +192,38 @@ class SSEServer:
         session_ids = query_params.get("sessionId") or query_params.get("session_id")
         session_id = session_ids[0] if session_ids else None
 
+        # Always consume the request body before replying. Closing a socket with
+        # unread data makes some kernels (macOS) send RST instead of the response.
+        content_length = int(headers.get("content-length", 0) or 0)
+        body_bytes = await reader.readexactly(content_length) if content_length > 0 else b""
+
         if not session_id or session_id not in self.sessions:
-            writer.write(
-                b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nMissing or invalid sessionId\n"
-            )
-            await writer.drain()
-            writer.close()
+            await self._send_simple(writer, "400 Bad Request", "Missing or invalid sessionId\n")
             return
 
-        content_length = int(headers.get("content-length", 0))
-        if content_length <= 0:
-            writer.write(
-                b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nEmpty body\n"
-            )
-            await writer.drain()
-            writer.close()
+        if not body_bytes:
+            await self._send_simple(writer, "400 Bad Request", "Empty body\n")
             return
-
-        body_bytes = await reader.readexactly(content_length)
-        body = body_bytes.decode("utf-8")
 
         transport = self.sessions[session_id]
-        await transport.post_message(body)
+        await transport.post_message(body_bytes.decode("utf-8"))
 
-        writer.write(
-            b"HTTP/1.1 202 Accepted\r\nContent-Type: text/plain\r\nContent-Length: 8\r\n\r\nAccepted"
+        await self._send_simple(writer, "202 Accepted", "Accepted")
+
+    @staticmethod
+    async def _send_simple(writer: asyncio.StreamWriter, status: str, body: str) -> None:
+        """Write a complete plain-text response and close the connection cleanly."""
+        payload = body.encode("utf-8")
+        head = (
+            f"HTTP/1.1 {status}\r\n"
+            "Content-Type: text/plain\r\n"
+            f"Content-Length: {len(payload)}\r\n"
+            "Connection: close\r\n\r\n"
         )
+        writer.write(head.encode("utf-8") + payload)
         await writer.drain()
         writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
